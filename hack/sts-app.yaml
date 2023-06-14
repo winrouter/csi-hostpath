@@ -1,0 +1,35 @@
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: fio-1
+spec:
+  serviceName: fio-1
+  replicas: 1
+  selector:
+    matchLabels:
+      app: fio-1
+  template:
+    metadata:
+      labels:
+        app: fio-1
+    spec:
+      containers:
+        - name: perfrunner
+          image: openebs/tests-fio
+          ports:
+            - containerPort: 80
+              name: web
+          command: ["/bin/bash"]
+          args: ["-c", "while true ;do sleep 120; done"]
+          volumeMounts:
+            - name: fio-vol
+              mountPath: /datadir
+  volumeClaimTemplates:
+    - metadata:
+        name: fio-vol
+      spec:
+        accessModes: [ "ReadWriteOnce" ]
+        storageClassName: hostpath-sckubec   get
+        resources:
+          requests:
+            storage: 1Gi

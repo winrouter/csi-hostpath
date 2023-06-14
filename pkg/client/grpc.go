@@ -82,7 +82,6 @@ func (c *workerConnection) Close() error {
 func connect(address string, timeout time.Duration) (*grpc.ClientConn, error) {
 	log.V(6).Infof("New Connecting to %s", address)
 	// only for unit test
-	var bufDialerFunc func(context.Context, string) (net.Conn, error)
 	dialOptions := []grpc.DialOption{
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
 		grpc.WithUnaryInterceptor(logGRPC),
@@ -158,7 +157,7 @@ func (c *workerConnection) CreateSnapshot(ctx context.Context, vgName string, sn
 func (c *workerConnection) GetVolume(ctx context.Context, volGroup string, volumeID string) (string, error) {
 	client := remotelib.NewVolClient(c.conn)
 	req := remotelib.ListVolRequest{
-		VolumeGroup: utils.GetNameKey(volGroup, volumeID),
+		VolumeGroup: volGroup,
 	}
 
 	rsp, err := client.ListVol(ctx, &req)

@@ -72,7 +72,7 @@ func New(config *config.Config) *CSIDriver {
 		// related to the volume like destroy or
 		// property change, handle it accordingly.
 
-		driver.ns = NewNode(driver)
+		driver.ns = NewNodeServer(driver)
 	}
 
 	// Identity server is common to both node and

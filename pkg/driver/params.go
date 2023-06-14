@@ -18,7 +18,6 @@ package driver
 
 import (
 	"fmt"
-	"regexp"
 	"strconv"
 	"strings"
 

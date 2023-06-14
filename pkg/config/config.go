@@ -18,11 +18,6 @@ package config
 
 const (
 	LocalProvider   = "hostpath.csi.ake.io"
-	RawFileVGPrefix = "k8shostpath-"
-	RawFileHostPath = "hostpath"
-	VolGroup        = "volgroup"
-	Mode            = "mode"
-	KataDirect      = "katadirect"
 )
 
 // Config struct fills the parameters of request or user input
@@ -90,6 +85,10 @@ type Config struct {
 	DisableExporterMetrics bool
 
 	GrpcConnectionTimeout int
+
+	KubeAPIQPS int
+
+	KubeAPIBurst int
 }
 
 // Default returns a new instance of config

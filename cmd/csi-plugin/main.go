@@ -45,7 +45,7 @@ func main() {
 	cmd.Flags().AddGoFlagSet(flag.CommandLine)
 
 	cmd.PersistentFlags().StringVar(
-		&config.NodeID, "nodeid", lvm.NodeID, "NodeID to identify the node running this driver",
+		&config.NodeID, "nodeID", "mock-node", "NodeID to identify the node running this driver",
 	)
 
 	cmd.PersistentFlags().StringVar(
@@ -57,11 +57,11 @@ func main() {
 	)
 
 	cmd.PersistentFlags().StringVar(
-		&config.DriverName, "name", "local.csi.openebs.io", "Name of this driver",
+		&config.DriverName, "driver", "hostpath.csi.ake.io", "Name of this driver",
 	)
 
 	cmd.PersistentFlags().StringVar(
-		&config.PluginType, "plugin", "csi-plugin", "Type of this driver i.e. controller or node",
+		&config.PluginType, "driver-mode", "controller", "Type of this driver i.e. controller or node",
 	)
 
 	cmd.PersistentFlags().BoolVar(

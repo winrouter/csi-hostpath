@@ -1,0 +1,25 @@
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: {{ .Values.storageclass.hostpath.name }}
+{{ include "local.labels" . | indent 2 }}
+provisioner: {{ .Values.driver }}
+parameters:
+  volumeType: "LVM"
+  csi.storage.k8s.io/fstype: ext4
+reclaimPolicy: Delete
+volumeBindingMode: WaitForFirstConsumer
+allowVolumeExpansion: true
+---
+apiVersion: snapshot.storage.k8s.io/v1
+kind: VolumeSnapshotClass
+metadata:
+  name: {{ .Values.storageclass.hostpath.name }}
+{{ include "local.labels" . | indent 2 }}
+driver: {{ .Values.driver }}
+deletionPolicy: Delete
+parameters:
+  csi.aliyun.com/readonly: "true"
+  csi.aliyun.com/snapshot-initial-size: 4Gi
+  csi.aliyun.com/snapshot-expansion-size: 1Gi
+  csi.aliyun.com/snapshot-expansion-threshold: 50%

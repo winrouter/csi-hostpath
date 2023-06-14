@@ -17,13 +17,12 @@ limitations under the License.
 package driver
 
 import (
-	"errors"
 	"fmt"
+	log "k8s.io/klog/v2"
 
 	"net/http"
 	"os"
 	"strings"
-	"sync"
 
 	"github.com/winrouter/csi-hostpath/pkg/server"
 	"github.com/winrouter/csi-hostpath/pkg/utils"
@@ -44,6 +43,9 @@ import (
 	utilexec "k8s.io/utils/exec"
 )
 
+const (
+	MPName       = "MountPoint"
+)
 // node is the server implementation
 // for CSI NodeServer
 type nodeServer struct {
@@ -180,7 +182,7 @@ func (ns *nodeServer) NodePublishVolume(
 	if targetPath == "" {
 		return nil, status.Error(codes.InvalidArgument, "NodePublishVolume: targetPath is empty")
 	}
-	log.Infof("NodePublishVolume: start to mount volume %s to target path %s", volumeID, targetPath)
+	klog.Infof("NodePublishVolume: start to mount volume %s to target path %s", volumeID, targetPath)
 
 
 	switch req.GetVolumeCapability().GetAccessType().(type) {
@@ -212,7 +214,7 @@ func (ns *nodeServer) NodePublishVolume(
 func (ns *nodeServer) mountMountPointVolume(ctx context.Context, req *csi.NodePublishVolumeRequest) error {
 	sourcePath := ""
 	targetPath := req.TargetPath
-	if value, ok := req.VolumeContext[string(pkg.MPName)]; ok {
+	if value, ok := req.VolumeContext[string(MPName)]; ok {
 		sourcePath = value
 	}
 	if sourcePath == "" {
@@ -404,7 +406,6 @@ func (ns *nodeServer) NodeUnstageVolume(
 	volName := strings.ToLower(req.GetVolumeId())
 	klog.Infof("NodeUnstageVolume volume %s", volName)
 
-	}
 
 	return &csi.NodeUnstageVolumeResponse{}, nil
 }

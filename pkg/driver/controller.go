@@ -18,11 +18,12 @@ package driver
 
 import (
 	"fmt"
+	snapshot "github.com/kubernetes-csi/external-snapshotter/client/v4/clientset/versioned"
 	"github.com/winrouter/csi-hostpath/pkg/config"
+	"github.com/winrouter/csi-hostpath/pkg/signals"
 	"github.com/winrouter/csi-hostpath/pkg/utils"
-	"math/rand"
-	"regexp"
-	"strconv"
+	"k8s.io/client-go/tools/cache"
+	log "k8s.io/klog/v2"
 	"strings"
 	"time"
 
@@ -69,6 +70,7 @@ type controller struct {
 	indexedLabel string
 
 	k8sClient            *kubernetes.Clientset
+	snapClient  snapshot.Interface
 
 	nodeLister corelisters.NodeLister
 	podLister  corelisters.PodLister
@@ -130,12 +132,32 @@ func (cs *controller) init() error {
 		return errors.Wrap(err, "failed to build k8s clientset")
 	}
 	cs.k8sClient = kubeClient
+	snapClient, err := snapshot.NewForConfig(cfg)
+	if err != nil {
+		log.Fatalf("fail to build snapshot clientset: %s", err.Error())
+	}
+	cs.snapClient = snapClient
+
 
 	kubeInformerFactory := kubeinformers.NewSharedInformerFactory(cs.k8sClient, time.Second*30)
 	cs.nodeLister = kubeInformerFactory.Core().V1().Nodes().Lister()
 	cs.podLister = kubeInformerFactory.Core().V1().Pods().Lister()
 	cs.pvcLister = kubeInformerFactory.Core().V1().PersistentVolumeClaims().Lister()
 	cs.pvLister = kubeInformerFactory.Core().V1().PersistentVolumes().Lister()
+
+	stopCh := signals.SetupSignalHandler()
+	kubeInformerFactory.Start(stopCh)
+	log.Info("Waiting for informer caches to sync")
+	if ok := cache.WaitForCacheSync(
+		stopCh,
+		kubeInformerFactory.Core().V1().Nodes().Informer().HasSynced,
+		kubeInformerFactory.Core().V1().Pods().Informer().HasSynced,
+		kubeInformerFactory.Core().V1().PersistentVolumeClaims().Informer().HasSynced,
+		kubeInformerFactory.Core().V1().PersistentVolumes().Informer().HasSynced,
+	); !ok {
+		log.Fatalf("failed to wait for caches to sync")
+	}
+	log.Info("informer sync successfully")
 	return nil
 }
 
@@ -190,7 +212,7 @@ func (cs *controller) CreateVolume(
 	}
 	nodeName, exist := pvc.Annotations[AnnoSelectedNode]
 	if !exist {
-		return nil, status.Errorf(codes.Unimplemented, "CreateVolume: no annotation %s found in pvc %s. Check if volumeBindingMode of storageclass is WaitForFirstConsumer, cause we only support WaitForFirstConsumer mode", pkg.AnnoSelectedNode, utils.GetNameKey(pvcNameSpace, pvcName))
+		return nil, status.Errorf(codes.Unimplemented, "CreateVolume: no annotation %s found in pvc %s. Check if volumeBindingMode of storageclass is WaitForFirstConsumer, cause we only support WaitForFirstConsumer mode", AnnoSelectedNode, utils.GetNameKey(pvcNamespace, pvcName))
 	}
 	conn, err := cs.getNodeConn(nodeName)
 	if err != nil {
@@ -323,21 +345,21 @@ func (cs *controller) DeleteVolume(
 
 	vgName := utils.GetVGNameFromCsiPV(pv)
 	if vgName == "" {
-		log.Warningf("DeleteVolume: delete local volume %s with empty vgName(may be hacked)", volumeID)
+		klog.Warningf("DeleteVolume: delete local volume %s with empty vgName(may be hacked)", volumeID)
 		return &csi.DeleteVolumeResponse{}, nil
 	}
 
 	if lvName, err := conn.GetVolume(ctx, vgName, volumeID); err != nil {
 		if strings.Contains(err.Error(), "Failed to find logical volume") {
-			log.Warningf("DeleteVolume: lvm volume not found, skip deleting %s", volumeID)
+			klog.Warningf("DeleteVolume: lvm volume not found, skip deleting %s", volumeID)
 		} else if strings.Contains(err.Error(), "Volume group \""+vgName+"\" not found") {
-			log.Warningf("DeleteVolume: Volume group not found, skip deleting %s", volumeID)
+			klog.Warningf("DeleteVolume: Volume group not found, skip deleting %s", volumeID)
 		} else {
 			return nil, status.Errorf(codes.Internal, "DeleteVolume: fail to get lv %s: %s", volumeID, err.Error())
 		}
 	} else {
 		if lvName != "" {
-			log.Infof("DeleteVolume: found lv %s at node %s, now deleting", utils.GetNameKey(vgName, volumeID), nodeName)
+			klog.Infof("DeleteVolume: found lv %s at node %s, now deleting", utils.GetNameKey(vgName, volumeID), nodeName)
 			if err := conn.DeleteVolume(ctx, vgName, volumeID); err != nil {
 				return nil, status.Errorf(codes.Internal, "DeleteVolume: fail to delete lv %s: %s", volumeID, err.Error())
 			}
@@ -422,18 +444,7 @@ func (cs *controller) ControllerExpandVolume(
 	req *csi.ControllerExpandVolumeRequest,
 ) (*csi.ControllerExpandVolumeResponse, error) {
 
-	volumeID := strings.ToLower(req.GetVolumeId())
-	if volumeID == "" {
-		return nil, status.Errorf(
-			codes.InvalidArgument,
-			"ControllerExpandVolume: no volumeID provided",
-		)
-	}
-
-	/* round off the new size */
-
 	nodeExpansionRequired := true
-
 	log.V(4).Infof("ControllerExpandVolume: called with args %+v", *req)
 
 	// Step 1: get vgName
@@ -492,7 +503,6 @@ func (cs *controller) CreateSnapshot(
 		return nil, err
 	}
 
-	capacity, _ := strconv.ParseInt("102400", 10, 64)
 
 	snapTimeStamp := time.Now().Unix()
 
@@ -530,7 +540,6 @@ func (cs *controller) CreateSnapshot(
 	}
 	defer conn.Close()
 
-	srcPVSize, _ := srcPV.Spec.Capacity.Storage().AsInt64()
 	var sizeBytes int64
 
 	// create lvm snapshot
@@ -539,7 +548,7 @@ func (cs *controller) CreateSnapshot(
 		return nil, status.Errorf(codes.Internal, "CreateSnapshot: get lvm snapshot %s failed: %s", snapshotName, err.Error())
 	}
 	if lvmName == "" {
-		log.Infof("CreateSnapshot: ro snapshot %s not found, now creating with initialSize %d on node %s", utils.GetNameKey(vgName, snapshotName), snapshotName, initialSize, nodeName)
+		log.Infof("CreateSnapshot: ro snapshot %s not found, now creating on node %s", utils.GetNameKey(vgName, snapshotName), snapshotName, nodeName)
 		sizeBytes, err = conn.CreateSnapshot(ctx, vgName, snapshotName, srcVolumeID)
 		if err != nil {
 			return nil, status.Errorf(codes.Internal, "CreateSnapshot: create lvm snapshot %s failed: %s", snapshotName, err.Error())
@@ -576,7 +585,7 @@ func (cs *controller) DeleteSnapshot(
 	}
 
 	// get volumeID from snapshotcontent
-	snapContent, err := utils.GetVolumeSnapshotContent(cs.options.snapclient, snapshotID)
+	snapContent, err := utils.GetVolumeSnapshotContent(cs.snapClient, snapshotID)
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "DeleteSnapshot: get snapContent %s error: %s", snapshotID, err.Error())
 	}

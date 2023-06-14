@@ -4,13 +4,12 @@ import (
 	"fmt"
 	"github.com/winrouter/csi-hostpath/pkg/server"
 	v1 "k8s.io/api/core/v1"
-	log "k8s.io/klog/v2"
 	"net"
 )
 
 func getNodeAddr(node *v1.Node, nodeID string, useNodeHostname bool) (string, error) {
 	if useNodeHostname {
-		return node.Name + ":" + GetLvmdPort(), nil
+		return node.Name + ":" + server.GetLvmdPort(), nil
 	}
 	ip, err := GetNodeIP(node, nodeID)
 	if err != nil {
@@ -20,7 +19,7 @@ func getNodeAddr(node *v1.Node, nodeID string, useNodeHostname bool) (string, er
 		// ipv6: https://stackoverflow.com/a/22752227
 		return fmt.Sprintf("[%s]", ip.String()) + ":" + server.GetLvmdPort(), nil
 	}
-	return ip.String() + ":" + GetLvmdPort(), nil
+	return ip.String() + ":" + server.GetLvmdPort(), nil
 }
 
 // GetNodeIP get node address

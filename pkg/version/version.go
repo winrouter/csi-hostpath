@@ -17,15 +17,17 @@ limitations under the License.
 package version
 
 import (
-	"io/ioutil"
-	"os"
 	"os/exec"
-	"path/filepath"
 	"strings"
 
 	"k8s.io/klog"
+	_ "embed"
 )
 
+//go:embed VERSION
+var VersionContent []byte
+//go:embed BUILDMETA
+var MetaContent []byte
 var (
 	// GitCommit that was compiled; filled in by
 	// the compiler.
@@ -61,14 +63,14 @@ func Get() string {
 		return Version
 	}
 
-	path := filepath.Join(os.Getenv("GOPATH") + versionFile)
-	vBytes, err := ioutil.ReadFile(path)
-	if err != nil {
-		klog.Errorf("failed to get version: %s", err.Error())
-		return ""
-	}
+	//path := filepath.Join(os.Getenv("GOPATH") + versionFile)
+	//vBytes, err := ioutil.ReadFile(path)
+	//if err != nil {
+	//	klog.Errorf("failed to get version: %s", err.Error())
+	//	return ""
+	//}
 
-	return strings.TrimSpace(string(vBytes))
+	return strings.TrimSpace(string(VersionContent))
 }
 
 // GetBuildMeta returns build type from
@@ -80,14 +82,14 @@ func GetBuildMeta() string {
 		return "-" + VersionMeta
 	}
 
-	path := filepath.Join(os.Getenv("GOPATH") + buildMetaFile)
-	vBytes, err := ioutil.ReadFile(path)
-	if err != nil {
-		klog.Errorf("failed to get build version: %s", err.Error())
-		return ""
-	}
+	//path := filepath.Join(os.Getenv("GOPATH") + buildMetaFile)
+	//vBytes, err := ioutil.ReadFile(path)
+	//if err != nil {
+	//	klog.Errorf("failed to get build version: %s", err.Error())
+	//	return ""
+	//}
 
-	return "-" + strings.TrimSpace(string(vBytes))
+	return "-" + strings.TrimSpace(string(MetaContent))
 }
 
 // GetGitCommit returns Git commit SHA-1 from

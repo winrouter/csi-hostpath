@@ -1,0 +1,145 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+{{ include "local.labels" . | indent 2 }}
+    app.kubernetes.io/component: {{ .Values.name }}-controller
+  name: {{ .Values.name }}-controller
+  namespace: {{ .Values.namespace }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/component: {{ .Values.name }}-controller
+  template:
+    metadata:
+{{ include "local.labels" . | indent 6 }}
+        app.kubernetes.io/component: {{ .Values.name }}-controller
+    spec:
+      containers:
+      - name: csi-provisioner
+        args:
+        - --csi-address=$(ADDRESS)
+        - --volume-name-prefix={{ .Values.agent.volume_name_prefix }}
+        - --feature-gates=Topology=True
+        - --strict-topology=True
+        - --extra-create-metadata=true
+        - --timeout=10m
+        env:
+        - name: ADDRESS
+          value: /var/lib/kubelet/plugins/{{ .Values.driver }}/csi.sock
+        - name: TZ
+          value: Asia/Shanghai
+        image: {{ .Values.global.RegistryLibraryURL }}/{{ .Values.images.provisioner.image }}:{{ .Values.images.provisioner.tag }}
+        imagePullPolicy: Always
+        resources:
+          limits:
+            cpu: 500m
+            memory: 512Mi
+          requests:
+            cpu: 50m
+            memory: 128Mi
+        volumeMounts:
+        - mountPath: /var/lib/kubelet/plugins/{{ .Values.driver }}
+          name: socket-dir
+      - name: csi-resizer
+        args:
+        - --csi-address=$(ADDRESS)
+        env:
+        - name: ADDRESS
+          value: /var/lib/kubelet/plugins/{{ .Values.driver }}/csi.sock
+        - name: TZ
+          value: Asia/Shanghai
+        image: {{ .Values.global.RegistryLibraryURL }}/{{ .Values.images.resizer.image }}:{{ .Values.images.resizer.tag }}
+        imagePullPolicy: Always
+        resources:
+          limits:
+            cpu: 500m
+            memory: 512Mi
+          requests:
+            cpu: 50m
+            memory: 128Mi
+        volumeMounts:
+        - mountPath: /var/lib/kubelet/plugins/{{ .Values.driver }}
+          name: socket-dir
+      - name: csi-snapshotter
+        args:
+        - --csi-address=$(ADDRESS)
+        - --snapshot-name-prefix=snap
+        env:
+        - name: ADDRESS
+          value: /var/lib/kubelet/plugins/{{ .Values.driver }}/csi.sock
+        - name: TZ
+          value: Asia/Shanghai
+        image: {{ .Values.global.RegistryLibraryURL }}/{{ .Values.images.snapshotter.image }}:{{ .Values.images.snapshotter.tag }}
+        imagePullPolicy: Always
+        resources:
+          limits:
+            cpu: 500m
+            memory: 512Mi
+          requests:
+            cpu: 50m
+            memory: 128Mi
+        volumeMounts:
+        - mountPath: /var/lib/kubelet/plugins/{{ .Values.driver }}
+          name: socket-dir
+      - name: csi-plugin
+        args:
+        - csi
+        - --endpoint=$(CSI_ENDPOINT)
+        - --nodeID=$(KUBE_NODE_NAME)
+        - --driver={{ .Values.driver }}
+        - --driver-mode=controller
+        env:
+        - name: KUBE_NODE_NAME
+          valueFrom:
+            fieldRef:
+              apiVersion: v1
+              fieldPath: spec.nodeName
+        - name: CSI_ENDPOINT
+          value: unix://var/lib/kubelet/plugins/{{ .Values.driver }}/csi.sock
+        - name: TZ
+          value: Asia/Shanghai
+        - name: ISSUE_ORPHANED_POD
+          value: "true"
+        - name: ISSUE_BLOCK_REFERENCE
+          value: "true"
+        - name: ISSUE_MESSAGE_FILE
+          value: "true"
+        image: {{ .Values.global.RegistryDevURL }}/{{ .Values.images.csi_hostpath.image }}:{{ .Values.images.csi_hostpath.tag }}
+        imagePullPolicy: Always
+        resources:
+          limits:
+            cpu: 500m
+            memory: 512Mi
+          requests:
+            cpu: 50m
+            memory: 128Mi
+        volumeMounts:
+        - mountPath: /var/lib/kubelet/plugins/{{ .Values.driver }}
+          name: socket-dir
+      - name: snapshot-controller
+        image: {{ .Values.global.RegistryLibraryURL }}/{{ .Values.images.snapshot_controller.image }}:{{ .Values.images.snapshot_controller.tag }}
+        env:
+          - name: TZ
+            value: Asia/Shanghai
+        imagePullPolicy: Always
+        resources:
+          limits:
+            cpu: 500m
+            memory: 512Mi
+          requests:
+            cpu: 50m
+            memory: 128Mi
+      priorityClassName: system-cluster-critical
+      restartPolicy: Always
+      serviceAccount: {{ .Values.name }}
+      serviceAccountName: {{ .Values.name }}
+      tolerations:
+      - effect: NoSchedule
+        key: node-role.kubernetes.io/control-plane
+        operator: Exists
+      volumes:
+      - name: socket-dir
+        hostPath:
+          path: {{ .Values.agent.kubelet_dir }}/plugins/{{ .Values.driver }}
+          type: DirectoryOrCreate

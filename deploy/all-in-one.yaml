@@ -1,0 +1,1824 @@
+---
+# Source: csi-hostpath/templates/rbac.yaml
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: csi-hostpath
+  namespace: kube-system
+  labels:
+    app.kubernetes.io/managed-by: "Helm"
+    app.kubernetes.io/name: "csi-hostpath"
+    app.kubernetes.io/version: "v0.0.1"
+    helm.sh/chart: "csi-hostpath-v0.0.1"
+---
+# Source: csi-hostpath/templates/storage-class.yaml
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: hostpath-mock
+  labels:
+    app.kubernetes.io/managed-by: "Helm"
+    app.kubernetes.io/name: "csi-hostpath"
+    app.kubernetes.io/version: "v0.0.1"
+    helm.sh/chart: "csi-hostpath-v0.0.1"
+provisioner: hostpath.csi.ake.io
+parameters:
+  volumeType: "LVM"
+  csi.storage.k8s.io/fstype: ext4
+reclaimPolicy: Delete
+volumeBindingMode: WaitForFirstConsumer
+allowVolumeExpansion: true
+---
+# Source: csi-hostpath/templates/rbac.yaml
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: csi-hostpath
+  labels:
+    app.kubernetes.io/managed-by: "Helm"
+    app.kubernetes.io/name: "csi-hostpath"
+    app.kubernetes.io/version: "v0.0.1"
+    helm.sh/chart: "csi-hostpath-v0.0.1"
+rules:
+  - apiGroups:
+      - ""
+    resources:
+      - events
+    verbs:
+      - create
+      - patch
+      - update
+  - apiGroups:
+      - ""
+    resources:
+      - nodes
+      - pods
+      - pods/binding
+      - pods/status
+      - bindings
+      - persistentvolumeclaims
+      - persistentvolumeclaims/status
+      - persistentvolumes
+      - persistentvolumes/status
+      - namespaces
+      - secrets
+    verbs:
+      - create
+      - get
+      - list
+      - watch
+      - update
+      - delete
+      - patch
+  - apiGroups:
+      - storage.k8s.io
+    resources:
+      - storageclasses
+      - csinodes
+      - volumeattachments
+    verbs:
+      - get
+      - list
+      - watch
+  - apiGroups:
+      - snapshot.storage.k8s.io
+    resources:
+      - volumesnapshotclasses
+      - volumesnapshots
+      - volumesnapshots/status
+      - volumesnapshotcontents
+      - volumesnapshotcontents/status
+    verbs:
+      - create
+      - get
+      - list
+      - watch
+      - update
+      - delete
+      - patch
+  - apiGroups:
+      - "coordination.k8s.io"
+    resources:
+      - leases
+    verbs:
+      - list
+      - watch
+      - create
+      - update
+      - patch
+      - delete
+      - get
+---
+# Source: csi-hostpath/templates/rbac.yaml
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: csi-hostpath
+  labels:
+    app.kubernetes.io/managed-by: "Helm"
+    app.kubernetes.io/name: "csi-hostpath"
+    app.kubernetes.io/version: "v0.0.1"
+    helm.sh/chart: "csi-hostpath-v0.0.1"
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: csi-hostpath
+subjects:
+- kind: ServiceAccount
+  name: csi-hostpath
+  namespace: kube-system
+---
+# Source: csi-hostpath/templates/agent.yaml
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: csi-hostpath-agent
+  namespace: kube-system
+  labels:
+    app.kubernetes.io/managed-by: "Helm"
+    app.kubernetes.io/name: "csi-hostpath"
+    app.kubernetes.io/version: "v0.0.1"
+    helm.sh/chart: "csi-hostpath-v0.0.1"
+    app.kubernetes.io/component: csi-hostpath-agent
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/component: csi-hostpath-agent
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/managed-by: "Helm"
+        app.kubernetes.io/name: "csi-hostpath"
+        app.kubernetes.io/version: "v0.0.1"
+        helm.sh/chart: "csi-hostpath-v0.0.1"
+        app.kubernetes.io/component: csi-hostpath-agent
+    spec:
+      tolerations:
+      - operator: Exists
+      serviceAccount: csi-hostpath
+      priorityClassName: system-node-critical
+      hostNetwork: true
+      hostPID: true
+      dnsPolicy: ClusterFirstWithHostNet
+      containers:
+      - name: driver-registrar
+        image: harbor.archeros.cn/library/ake/csi-node-driver-registrar:v2.3.0
+        imagePullPolicy: Always
+        args:
+        - "--v=5"
+        - "--csi-address=/csi/csi.sock"
+        - "--kubelet-registration-path=/var/lib/kubelet/plugins/hostpath.csi.ake.io/csi.sock"
+        env:
+        - name: KUBE_NODE_NAME
+          valueFrom:
+            fieldRef:
+              apiVersion: v1
+              fieldPath: spec.nodeName
+        - name: TZ
+          value: Asia/Shanghai
+        resources:
+          limits:
+            cpu: 200m
+            memory: 100Mi
+          requests:
+            cpu: 20m
+            memory: 50Mi
+        volumeMounts:
+          - name: plugin-dir
+            mountPath: /csi
+          - name: registration-dir
+            mountPath: /registration
+      - name: csi-plugin
+        securityContext:
+          privileged: true
+          capabilities:
+            add: ["SYS_ADMIN"]
+          allowPrivilegeEscalation: true
+        image: /csi-hostpath:v0.7.1
+        imagePullPolicy: Always
+        args:
+        - csi
+        - "--endpoint=$(CSI_ENDPOINT)"
+        - "--nodeID=$(KUBE_NODE_NAME)"
+        - "--driver=hostpath.csi.ake.io"
+        - "--driver-mode=agent"
+        env:
+        - name: KUBE_NODE_NAME
+          valueFrom:
+            fieldRef:
+              apiVersion: v1
+              fieldPath: spec.nodeName
+        - name: CSI_ENDPOINT
+          value: unix://var/lib/kubelet/plugins/hostpath.csi.ake.io/csi.sock
+        - name: TZ
+          value: Asia/Shanghai
+        - name: ISSUE_ORPHANED_POD
+          value: "true"
+        - name: ISSUE_BLOCK_REFERENCE
+          value: "true"
+        - name: ISSUE_MESSAGE_FILE
+          value: "true"
+        resources:
+          limits:
+            cpu: 2
+            memory: 4Gi
+          requests:
+            cpu: 50m
+            memory: 128Mi
+        volumeMounts:
+        - name: pods-mount-dir
+          mountPath: /var/lib/kubelet
+          mountPropagation: "Bidirectional"
+        - mountPath: /dev
+          mountPropagation: "HostToContainer"
+          name: host-dev
+        - mountPath: /opt/csi-hostpath/
+          mountPropagation: "Bidirectional"
+          name: localvolume
+        - mountPath: /var/log
+          name: host-log
+        - mountPath: /host_sys
+          mountPropagation: Bidirectional
+          name: sys
+      volumes:
+      - name: host-dev
+        hostPath:
+          path: /dev
+      - name: sys
+        hostPath:
+          path: "/sys"
+      - name: localvolume
+        hostPath:
+          path: /opt/csi-hostpath/
+          type: DirectoryOrCreate
+      - name: plugin-dir
+        hostPath:
+          path: /var/lib/kubelet/plugins/hostpath.csi.ake.io
+          type: DirectoryOrCreate
+      - name: registration-dir
+        hostPath:
+          path: /var/lib/kubelet/plugins_registry
+          type: DirectoryOrCreate
+      - name: pods-mount-dir
+        hostPath:
+          path: /var/lib/kubelet
+          type: Directory
+      - name: host-log
+        hostPath:
+          path: /var/log
+          type: DirectoryOrCreate
+  updateStrategy:
+    type: RollingUpdate
+---
+# Source: csi-hostpath/templates/controller.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    app.kubernetes.io/managed-by: "Helm"
+    app.kubernetes.io/name: "csi-hostpath"
+    app.kubernetes.io/version: "v0.0.1"
+    helm.sh/chart: "csi-hostpath-v0.0.1"
+    app.kubernetes.io/component: csi-hostpath-controller
+  name: csi-hostpath-controller
+  namespace: kube-system
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/component: csi-hostpath-controller
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/managed-by: "Helm"
+        app.kubernetes.io/name: "csi-hostpath"
+        app.kubernetes.io/version: "v0.0.1"
+        helm.sh/chart: "csi-hostpath-v0.0.1"
+        app.kubernetes.io/component: csi-hostpath-controller
+    spec:
+      containers:
+      - name: csi-provisioner
+        args:
+        - --csi-address=$(ADDRESS)
+        - --volume-name-prefix=local
+        - --feature-gates=Topology=True
+        - --strict-topology=True
+        - --extra-create-metadata=true
+        - --timeout=10m
+        env:
+        - name: ADDRESS
+          value: /var/lib/kubelet/plugins/hostpath.csi.ake.io/csi.sock
+        - name: TZ
+          value: Asia/Shanghai
+        image: harbor.archeros.cn/library/ake/csi-provisioner:v3.0.0
+        imagePullPolicy: Always
+        resources:
+          limits:
+            cpu: 500m
+            memory: 512Mi
+          requests:
+            cpu: 50m
+            memory: 128Mi
+        volumeMounts:
+        - mountPath: /var/lib/kubelet/plugins/hostpath.csi.ake.io
+          name: socket-dir
+      - name: csi-resizer
+        args:
+        - --csi-address=$(ADDRESS)
+        env:
+        - name: ADDRESS
+          value: /var/lib/kubelet/plugins/hostpath.csi.ake.io/csi.sock
+        - name: TZ
+          value: Asia/Shanghai
+        image: harbor.archeros.cn/library/ake/csi-resizer:v1.3.0
+        imagePullPolicy: Always
+        resources:
+          limits:
+            cpu: 500m
+            memory: 512Mi
+          requests:
+            cpu: 50m
+            memory: 128Mi
+        volumeMounts:
+        - mountPath: /var/lib/kubelet/plugins/hostpath.csi.ake.io
+          name: socket-dir
+      - name: csi-snapshotter
+        args:
+        - --csi-address=$(ADDRESS)
+        - --snapshot-name-prefix=snap
+        env:
+        - name: ADDRESS
+          value: /var/lib/kubelet/plugins/hostpath.csi.ake.io/csi.sock
+        - name: TZ
+          value: Asia/Shanghai
+        image: harbor.archeros.cn/library/ake/csi-snapshotter:v4.2.1
+        imagePullPolicy: Always
+        resources:
+          limits:
+            cpu: 500m
+            memory: 512Mi
+          requests:
+            cpu: 50m
+            memory: 128Mi
+        volumeMounts:
+        - mountPath: /var/lib/kubelet/plugins/hostpath.csi.ake.io
+          name: socket-dir
+      - name: csi-plugin
+        args:
+        - csi
+        - --endpoint=$(CSI_ENDPOINT)
+        - --nodeID=$(KUBE_NODE_NAME)
+        - --driver=hostpath.csi.ake.io
+        - --driver-mode=controller
+        env:
+        - name: KUBE_NODE_NAME
+          valueFrom:
+            fieldRef:
+              apiVersion: v1
+              fieldPath: spec.nodeName
+        - name: CSI_ENDPOINT
+          value: unix://var/lib/kubelet/plugins/hostpath.csi.ake.io/csi.sock
+        - name: TZ
+          value: Asia/Shanghai
+        - name: ISSUE_ORPHANED_POD
+          value: "true"
+        - name: ISSUE_BLOCK_REFERENCE
+          value: "true"
+        - name: ISSUE_MESSAGE_FILE
+          value: "true"
+        image: harbor.archeros.cn/dev/ake//csi-hostpath:v0.7.1
+        imagePullPolicy: Always
+        resources:
+          limits:
+            cpu: 500m
+            memory: 512Mi
+          requests:
+            cpu: 50m
+            memory: 128Mi
+        volumeMounts:
+        - mountPath: /var/lib/kubelet/plugins/hostpath.csi.ake.io
+          name: socket-dir
+      - name: snapshot-controller
+        image: harbor.archeros.cn/library/ake/snapshot-controller:v4.2.1
+        env:
+          - name: TZ
+            value: Asia/Shanghai
+        imagePullPolicy: Always
+        resources:
+          limits:
+            cpu: 500m
+            memory: 512Mi
+          requests:
+            cpu: 50m
+            memory: 128Mi
+      priorityClassName: system-cluster-critical
+      restartPolicy: Always
+      serviceAccount: csi-hostpath
+      serviceAccountName: csi-hostpath
+      tolerations:
+      - effect: NoSchedule
+        key: node-role.kubernetes.io/control-plane
+        operator: Exists
+      volumes:
+      - name: socket-dir
+        hostPath:
+          path: /var/lib/kubelet/plugins/hostpath.csi.ake.io
+          type: DirectoryOrCreate
+---
+# Source: csi-hostpath/templates/agent.yaml
+apiVersion: storage.k8s.io/v1
+kind: CSIDriver
+metadata:
+  name: hostpath.csi.ake.io
+spec:
+  attachRequired: false
+  podInfoOnMount: true
+  volumeLifecycleModes:
+  - Persistent
+  - Ephemeral
+---
+# Source: csi-hostpath/templates/storage-class.yaml
+apiVersion: snapshot.storage.k8s.io/v1
+kind: VolumeSnapshotClass
+metadata:
+  name: hostpath-mock
+  labels:
+    app.kubernetes.io/managed-by: "Helm"
+    app.kubernetes.io/name: "csi-hostpath"
+    app.kubernetes.io/version: "v0.0.1"
+    helm.sh/chart: "csi-hostpath-v0.0.1"
+driver: hostpath.csi.ake.io
+deletionPolicy: Delete
+parameters:
+  csi.aliyun.com/readonly: "true"
+  csi.aliyun.com/snapshot-initial-size: 4Gi
+  csi.aliyun.com/snapshot-expansion-size: 1Gi
+  csi.aliyun.com/snapshot-expansion-threshold: 50%
+---
+# Source: csi-hostpath/templates/rbac.yaml
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: csi-hostpath
+  namespace: kube-system
+  labels:
+    app.kubernetes.io/managed-by: "Helm"
+    app.kubernetes.io/name: "csi-hostpath"
+    app.kubernetes.io/version: "v0.0.1"
+    helm.sh/chart: "csi-hostpath-v0.0.1"
+---
+# Source: csi-hostpath/templates/storage-class.yaml
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: hostpath-mock
+  labels:
+    app.kubernetes.io/managed-by: "Helm"
+    app.kubernetes.io/name: "csi-hostpath"
+    app.kubernetes.io/version: "v0.0.1"
+    helm.sh/chart: "csi-hostpath-v0.0.1"
+provisioner: hostpath.csi.ake.io
+parameters:
+  volumeType: "LVM"
+  csi.storage.k8s.io/fstype: ext4
+reclaimPolicy: Delete
+volumeBindingMode: WaitForFirstConsumer
+allowVolumeExpansion: true
+---
+# Source: csi-hostpath/templates/rbac.yaml
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: csi-hostpath
+  labels:
+    app.kubernetes.io/managed-by: "Helm"
+    app.kubernetes.io/name: "csi-hostpath"
+    app.kubernetes.io/version: "v0.0.1"
+    helm.sh/chart: "csi-hostpath-v0.0.1"
+rules:
+  - apiGroups:
+      - ""
+    resources:
+      - events
+    verbs:
+      - create
+      - patch
+      - update
+  - apiGroups:
+      - ""
+    resources:
+      - nodes
+      - pods
+      - pods/binding
+      - pods/status
+      - bindings
+      - persistentvolumeclaims
+      - persistentvolumeclaims/status
+      - persistentvolumes
+      - persistentvolumes/status
+      - namespaces
+      - secrets
+    verbs:
+      - create
+      - get
+      - list
+      - watch
+      - update
+      - delete
+      - patch
+  - apiGroups:
+      - storage.k8s.io
+    resources:
+      - storageclasses
+      - csinodes
+      - volumeattachments
+    verbs:
+      - get
+      - list
+      - watch
+  - apiGroups:
+      - snapshot.storage.k8s.io
+    resources:
+      - volumesnapshotclasses
+      - volumesnapshots
+      - volumesnapshots/status
+      - volumesnapshotcontents
+      - volumesnapshotcontents/status
+    verbs:
+      - create
+      - get
+      - list
+      - watch
+      - update
+      - delete
+      - patch
+  - apiGroups:
+      - "coordination.k8s.io"
+    resources:
+      - leases
+    verbs:
+      - list
+      - watch
+      - create
+      - update
+      - patch
+      - delete
+      - get
+---
+# Source: csi-hostpath/templates/rbac.yaml
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: csi-hostpath
+  labels:
+    app.kubernetes.io/managed-by: "Helm"
+    app.kubernetes.io/name: "csi-hostpath"
+    app.kubernetes.io/version: "v0.0.1"
+    helm.sh/chart: "csi-hostpath-v0.0.1"
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: csi-hostpath
+subjects:
+- kind: ServiceAccount
+  name: csi-hostpath
+  namespace: kube-system
+---
+# Source: csi-hostpath/templates/agent.yaml
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: csi-hostpath-agent
+  namespace: kube-system
+  labels:
+    app.kubernetes.io/managed-by: "Helm"
+    app.kubernetes.io/name: "csi-hostpath"
+    app.kubernetes.io/version: "v0.0.1"
+    helm.sh/chart: "csi-hostpath-v0.0.1"
+    app.kubernetes.io/component: csi-hostpath-agent
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/component: csi-hostpath-agent
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/managed-by: "Helm"
+        app.kubernetes.io/name: "csi-hostpath"
+        app.kubernetes.io/version: "v0.0.1"
+        helm.sh/chart: "csi-hostpath-v0.0.1"
+        app.kubernetes.io/component: csi-hostpath-agent
+    spec:
+      tolerations:
+      - operator: Exists
+      serviceAccount: csi-hostpath
+      priorityClassName: system-node-critical
+      hostNetwork: true
+      hostPID: true
+      dnsPolicy: ClusterFirstWithHostNet
+      containers:
+      - name: driver-registrar
+        image: harbor.archeros.cn/library/ake/csi-node-driver-registrar:v2.3.0
+        imagePullPolicy: Always
+        args:
+        - "--v=5"
+        - "--csi-address=/csi/csi.sock"
+        - "--kubelet-registration-path=/var/lib/kubelet/plugins/hostpath.csi.ake.io/csi.sock"
+        env:
+        - name: KUBE_NODE_NAME
+          valueFrom:
+            fieldRef:
+              apiVersion: v1
+              fieldPath: spec.nodeName
+        - name: TZ
+          value: Asia/Shanghai
+        resources:
+          limits:
+            cpu: 200m
+            memory: 100Mi
+          requests:
+            cpu: 20m
+            memory: 50Mi
+        volumeMounts:
+          - name: plugin-dir
+            mountPath: /csi
+          - name: registration-dir
+            mountPath: /registration
+      - name: csi-plugin
+        securityContext:
+          privileged: true
+          capabilities:
+            add: ["SYS_ADMIN"]
+          allowPrivilegeEscalation: true
+        image: harbor.archeros.cn/dev/ake//csi-hostpath:v0.7.1
+        imagePullPolicy: Always
+        args:
+        - csi
+        - "--endpoint=$(CSI_ENDPOINT)"
+        - "--nodeID=$(KUBE_NODE_NAME)"
+        - "--driver=hostpath.csi.ake.io"
+        - "--driver-mode=agent"
+        env:
+        - name: KUBE_NODE_NAME
+          valueFrom:
+            fieldRef:
+              apiVersion: v1
+              fieldPath: spec.nodeName
+        - name: CSI_ENDPOINT
+          value: unix://var/lib/kubelet/plugins/hostpath.csi.ake.io/csi.sock
+        - name: TZ
+          value: Asia/Shanghai
+        - name: ISSUE_ORPHANED_POD
+          value: "true"
+        - name: ISSUE_BLOCK_REFERENCE
+          value: "true"
+        - name: ISSUE_MESSAGE_FILE
+          value: "true"
+        resources:
+          limits:
+            cpu: 2
+            memory: 4Gi
+          requests:
+            cpu: 50m
+            memory: 128Mi
+        volumeMounts:
+        - name: pods-mount-dir
+          mountPath: /var/lib/kubelet
+          mountPropagation: "Bidirectional"
+        - mountPath: /dev
+          mountPropagation: "HostToContainer"
+          name: host-dev
+        - mountPath: /opt/csi-hostpath/
+          mountPropagation: "Bidirectional"
+          name: localvolume
+        - mountPath: /var/log
+          name: host-log
+        - mountPath: /host_sys
+          mountPropagation: Bidirectional
+          name: sys
+      volumes:
+      - name: host-dev
+        hostPath:
+          path: /dev
+      - name: sys
+        hostPath:
+          path: "/sys"
+      - name: localvolume
+        hostPath:
+          path: /opt/csi-hostpath/
+          type: DirectoryOrCreate
+      - name: plugin-dir
+        hostPath:
+          path: /var/lib/kubelet/plugins/hostpath.csi.ake.io
+          type: DirectoryOrCreate
+      - name: registration-dir
+        hostPath:
+          path: /var/lib/kubelet/plugins_registry
+          type: DirectoryOrCreate
+      - name: pods-mount-dir
+        hostPath:
+          path: /var/lib/kubelet
+          type: Directory
+      - name: host-log
+        hostPath:
+          path: /var/log
+          type: DirectoryOrCreate
+  updateStrategy:
+    type: RollingUpdate
+---
+# Source: csi-hostpath/templates/controller.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    app.kubernetes.io/managed-by: "Helm"
+    app.kubernetes.io/name: "csi-hostpath"
+    app.kubernetes.io/version: "v0.0.1"
+    helm.sh/chart: "csi-hostpath-v0.0.1"
+    app.kubernetes.io/component: csi-hostpath-controller
+  name: csi-hostpath-controller
+  namespace: kube-system
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/component: csi-hostpath-controller
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/managed-by: "Helm"
+        app.kubernetes.io/name: "csi-hostpath"
+        app.kubernetes.io/version: "v0.0.1"
+        helm.sh/chart: "csi-hostpath-v0.0.1"
+        app.kubernetes.io/component: csi-hostpath-controller
+    spec:
+      containers:
+      - name: csi-provisioner
+        args:
+        - --csi-address=$(ADDRESS)
+        - --volume-name-prefix=local
+        - --feature-gates=Topology=True
+        - --strict-topology=True
+        - --extra-create-metadata=true
+        - --timeout=10m
+        env:
+        - name: ADDRESS
+          value: /var/lib/kubelet/plugins/hostpath.csi.ake.io/csi.sock
+        - name: TZ
+          value: Asia/Shanghai
+        image: harbor.archeros.cn/library/ake/csi-provisioner:v3.0.0
+        imagePullPolicy: Always
+        resources:
+          limits:
+            cpu: 500m
+            memory: 512Mi
+          requests:
+            cpu: 50m
+            memory: 128Mi
+        volumeMounts:
+        - mountPath: /var/lib/kubelet/plugins/hostpath.csi.ake.io
+          name: socket-dir
+      - name: csi-resizer
+        args:
+        - --csi-address=$(ADDRESS)
+        env:
+        - name: ADDRESS
+          value: /var/lib/kubelet/plugins/hostpath.csi.ake.io/csi.sock
+        - name: TZ
+          value: Asia/Shanghai
+        image: harbor.archeros.cn/library/ake/csi-resizer:v1.3.0
+        imagePullPolicy: Always
+        resources:
+          limits:
+            cpu: 500m
+            memory: 512Mi
+          requests:
+            cpu: 50m
+            memory: 128Mi
+        volumeMounts:
+        - mountPath: /var/lib/kubelet/plugins/hostpath.csi.ake.io
+          name: socket-dir
+      - name: csi-snapshotter
+        args:
+        - --csi-address=$(ADDRESS)
+        - --snapshot-name-prefix=snap
+        env:
+        - name: ADDRESS
+          value: /var/lib/kubelet/plugins/hostpath.csi.ake.io/csi.sock
+        - name: TZ
+          value: Asia/Shanghai
+        image: harbor.archeros.cn/library/ake/csi-snapshotter:v4.2.1
+        imagePullPolicy: Always
+        resources:
+          limits:
+            cpu: 500m
+            memory: 512Mi
+          requests:
+            cpu: 50m
+            memory: 128Mi
+        volumeMounts:
+        - mountPath: /var/lib/kubelet/plugins/hostpath.csi.ake.io
+          name: socket-dir
+      - name: csi-plugin
+        args:
+        - csi
+        - --endpoint=$(CSI_ENDPOINT)
+        - --nodeID=$(KUBE_NODE_NAME)
+        - --driver=hostpath.csi.ake.io
+        - --driver-mode=controller
+        env:
+        - name: KUBE_NODE_NAME
+          valueFrom:
+            fieldRef:
+              apiVersion: v1
+              fieldPath: spec.nodeName
+        - name: CSI_ENDPOINT
+          value: unix://var/lib/kubelet/plugins/hostpath.csi.ake.io/csi.sock
+        - name: TZ
+          value: Asia/Shanghai
+        - name: ISSUE_ORPHANED_POD
+          value: "true"
+        - name: ISSUE_BLOCK_REFERENCE
+          value: "true"
+        - name: ISSUE_MESSAGE_FILE
+          value: "true"
+        image: harbor.archeros.cn/dev/ake//csi-hostpath:v0.7.1
+        imagePullPolicy: Always
+        resources:
+          limits:
+            cpu: 500m
+            memory: 512Mi
+          requests:
+            cpu: 50m
+            memory: 128Mi
+        volumeMounts:
+        - mountPath: /var/lib/kubelet/plugins/hostpath.csi.ake.io
+          name: socket-dir
+      - name: snapshot-controller
+        image: harbor.archeros.cn/library/ake/snapshot-controller:v4.2.1
+        env:
+          - name: TZ
+            value: Asia/Shanghai
+        imagePullPolicy: Always
+        resources:
+          limits:
+            cpu: 500m
+            memory: 512Mi
+          requests:
+            cpu: 50m
+            memory: 128Mi
+      priorityClassName: system-cluster-critical
+      restartPolicy: Always
+      serviceAccount: csi-hostpath
+      serviceAccountName: csi-hostpath
+      tolerations:
+      - effect: NoSchedule
+        key: node-role.kubernetes.io/control-plane
+        operator: Exists
+      volumes:
+      - name: socket-dir
+        hostPath:
+          path: /var/lib/kubelet/plugins/hostpath.csi.ake.io
+          type: DirectoryOrCreate
+---
+# Source: csi-hostpath/templates/agent.yaml
+apiVersion: storage.k8s.io/v1
+kind: CSIDriver
+metadata:
+  name: hostpath.csi.ake.io
+spec:
+  attachRequired: false
+  podInfoOnMount: true
+  volumeLifecycleModes:
+  - Persistent
+  - Ephemeral
+---
+# Source: csi-hostpath/templates/storage-class.yaml
+apiVersion: snapshot.storage.k8s.io/v1
+kind: VolumeSnapshotClass
+metadata:
+  name: hostpath-mock
+  labels:
+    app.kubernetes.io/managed-by: "Helm"
+    app.kubernetes.io/name: "csi-hostpath"
+    app.kubernetes.io/version: "v0.0.1"
+    helm.sh/chart: "csi-hostpath-v0.0.1"
+driver: hostpath.csi.ake.io
+deletionPolicy: Delete
+parameters:
+  csi.aliyun.com/readonly: "true"
+  csi.aliyun.com/snapshot-initial-size: 4Gi
+  csi.aliyun.com/snapshot-expansion-size: 1Gi
+  csi.aliyun.com/snapshot-expansion-threshold: 50%
+---
+# Source: csi-hostpath/templates/rbac.yaml
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: csi-hostpath
+  namespace: kube-system
+  labels:
+    app.kubernetes.io/managed-by: "Helm"
+    app.kubernetes.io/name: "csi-hostpath"
+    app.kubernetes.io/version: "v0.0.1"
+    helm.sh/chart: "csi-hostpath-v0.0.1"
+---
+# Source: csi-hostpath/templates/storage-class.yaml
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: hostpath-mock
+  labels:
+    app.kubernetes.io/managed-by: "Helm"
+    app.kubernetes.io/name: "csi-hostpath"
+    app.kubernetes.io/version: "v0.0.1"
+    helm.sh/chart: "csi-hostpath-v0.0.1"
+provisioner: hostpath.csi.ake.io
+parameters:
+  volumeType: "LVM"
+  csi.storage.k8s.io/fstype: ext4
+reclaimPolicy: Delete
+volumeBindingMode: WaitForFirstConsumer
+allowVolumeExpansion: true
+---
+# Source: csi-hostpath/templates/rbac.yaml
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: csi-hostpath
+  labels:
+    app.kubernetes.io/managed-by: "Helm"
+    app.kubernetes.io/name: "csi-hostpath"
+    app.kubernetes.io/version: "v0.0.1"
+    helm.sh/chart: "csi-hostpath-v0.0.1"
+rules:
+  - apiGroups:
+      - ""
+    resources:
+      - events
+    verbs:
+      - create
+      - patch
+      - update
+  - apiGroups:
+      - ""
+    resources:
+      - nodes
+      - pods
+      - pods/binding
+      - pods/status
+      - bindings
+      - persistentvolumeclaims
+      - persistentvolumeclaims/status
+      - persistentvolumes
+      - persistentvolumes/status
+      - namespaces
+      - secrets
+    verbs:
+      - create
+      - get
+      - list
+      - watch
+      - update
+      - delete
+      - patch
+  - apiGroups:
+      - storage.k8s.io
+    resources:
+      - storageclasses
+      - csinodes
+      - volumeattachments
+    verbs:
+      - get
+      - list
+      - watch
+  - apiGroups:
+      - snapshot.storage.k8s.io
+    resources:
+      - volumesnapshotclasses
+      - volumesnapshots
+      - volumesnapshots/status
+      - volumesnapshotcontents
+      - volumesnapshotcontents/status
+    verbs:
+      - create
+      - get
+      - list
+      - watch
+      - update
+      - delete
+      - patch
+  - apiGroups:
+      - "coordination.k8s.io"
+    resources:
+      - leases
+    verbs:
+      - list
+      - watch
+      - create
+      - update
+      - patch
+      - delete
+      - get
+---
+# Source: csi-hostpath/templates/rbac.yaml
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: csi-hostpath
+  labels:
+    app.kubernetes.io/managed-by: "Helm"
+    app.kubernetes.io/name: "csi-hostpath"
+    app.kubernetes.io/version: "v0.0.1"
+    helm.sh/chart: "csi-hostpath-v0.0.1"
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: csi-hostpath
+subjects:
+- kind: ServiceAccount
+  name: csi-hostpath
+  namespace: kube-system
+---
+# Source: csi-hostpath/templates/agent.yaml
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: csi-hostpath-agent
+  namespace: kube-system
+  labels:
+    app.kubernetes.io/managed-by: "Helm"
+    app.kubernetes.io/name: "csi-hostpath"
+    app.kubernetes.io/version: "v0.0.1"
+    helm.sh/chart: "csi-hostpath-v0.0.1"
+    app.kubernetes.io/component: csi-hostpath-agent
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/component: csi-hostpath-agent
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/managed-by: "Helm"
+        app.kubernetes.io/name: "csi-hostpath"
+        app.kubernetes.io/version: "v0.0.1"
+        helm.sh/chart: "csi-hostpath-v0.0.1"
+        app.kubernetes.io/component: csi-hostpath-agent
+    spec:
+      tolerations:
+      - operator: Exists
+      serviceAccount: csi-hostpath
+      priorityClassName: system-node-critical
+      hostNetwork: true
+      hostPID: true
+      dnsPolicy: ClusterFirstWithHostNet
+      containers:
+      - name: driver-registrar
+        image: harbor.archeros.cn/library/ake/csi-node-driver-registrar:v2.3.0
+        imagePullPolicy: Always
+        args:
+        - "--v=5"
+        - "--csi-address=/csi/csi.sock"
+        - "--kubelet-registration-path=/var/lib/kubelet/plugins/hostpath.csi.ake.io/csi.sock"
+        env:
+        - name: KUBE_NODE_NAME
+          valueFrom:
+            fieldRef:
+              apiVersion: v1
+              fieldPath: spec.nodeName
+        - name: TZ
+          value: Asia/Shanghai
+        resources:
+          limits:
+            cpu: 200m
+            memory: 100Mi
+          requests:
+            cpu: 20m
+            memory: 50Mi
+        volumeMounts:
+          - name: plugin-dir
+            mountPath: /csi
+          - name: registration-dir
+            mountPath: /registration
+      - name: csi-plugin
+        securityContext:
+          privileged: true
+          capabilities:
+            add: ["SYS_ADMIN"]
+          allowPrivilegeEscalation: true
+        image: harbor.archeros.cn/dev/ake/csi-hostpath:v0.7.1
+        imagePullPolicy: Always
+        args:
+        - csi
+        - "--endpoint=$(CSI_ENDPOINT)"
+        - "--nodeID=$(KUBE_NODE_NAME)"
+        - "--driver=hostpath.csi.ake.io"
+        - "--driver-mode=agent"
+        env:
+        - name: KUBE_NODE_NAME
+          valueFrom:
+            fieldRef:
+              apiVersion: v1
+              fieldPath: spec.nodeName
+        - name: CSI_ENDPOINT
+          value: unix://var/lib/kubelet/plugins/hostpath.csi.ake.io/csi.sock
+        - name: TZ
+          value: Asia/Shanghai
+        - name: ISSUE_ORPHANED_POD
+          value: "true"
+        - name: ISSUE_BLOCK_REFERENCE
+          value: "true"
+        - name: ISSUE_MESSAGE_FILE
+          value: "true"
+        resources:
+          limits:
+            cpu: 2
+            memory: 4Gi
+          requests:
+            cpu: 50m
+            memory: 128Mi
+        volumeMounts:
+        - name: pods-mount-dir
+          mountPath: /var/lib/kubelet
+          mountPropagation: "Bidirectional"
+        - mountPath: /dev
+          mountPropagation: "HostToContainer"
+          name: host-dev
+        - mountPath: /opt/csi-hostpath/
+          mountPropagation: "Bidirectional"
+          name: localvolume
+        - mountPath: /var/log
+          name: host-log
+        - mountPath: /host_sys
+          mountPropagation: Bidirectional
+          name: sys
+      volumes:
+      - name: host-dev
+        hostPath:
+          path: /dev
+      - name: sys
+        hostPath:
+          path: "/sys"
+      - name: localvolume
+        hostPath:
+          path: /opt/csi-hostpath/
+          type: DirectoryOrCreate
+      - name: plugin-dir
+        hostPath:
+          path: /var/lib/kubelet/plugins/hostpath.csi.ake.io
+          type: DirectoryOrCreate
+      - name: registration-dir
+        hostPath:
+          path: /var/lib/kubelet/plugins_registry
+          type: DirectoryOrCreate
+      - name: pods-mount-dir
+        hostPath:
+          path: /var/lib/kubelet
+          type: Directory
+      - name: host-log
+        hostPath:
+          path: /var/log
+          type: DirectoryOrCreate
+  updateStrategy:
+    type: RollingUpdate
+---
+# Source: csi-hostpath/templates/controller.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    app.kubernetes.io/managed-by: "Helm"
+    app.kubernetes.io/name: "csi-hostpath"
+    app.kubernetes.io/version: "v0.0.1"
+    helm.sh/chart: "csi-hostpath-v0.0.1"
+    app.kubernetes.io/component: csi-hostpath-controller
+  name: csi-hostpath-controller
+  namespace: kube-system
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/component: csi-hostpath-controller
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/managed-by: "Helm"
+        app.kubernetes.io/name: "csi-hostpath"
+        app.kubernetes.io/version: "v0.0.1"
+        helm.sh/chart: "csi-hostpath-v0.0.1"
+        app.kubernetes.io/component: csi-hostpath-controller
+    spec:
+      containers:
+      - name: csi-provisioner
+        args:
+        - --csi-address=$(ADDRESS)
+        - --volume-name-prefix=local
+        - --feature-gates=Topology=True
+        - --strict-topology=True
+        - --extra-create-metadata=true
+        - --timeout=10m
+        env:
+        - name: ADDRESS
+          value: /var/lib/kubelet/plugins/hostpath.csi.ake.io/csi.sock
+        - name: TZ
+          value: Asia/Shanghai
+        image: harbor.archeros.cn/library/ake/csi-provisioner:v3.0.0
+        imagePullPolicy: Always
+        resources:
+          limits:
+            cpu: 500m
+            memory: 512Mi
+          requests:
+            cpu: 50m
+            memory: 128Mi
+        volumeMounts:
+        - mountPath: /var/lib/kubelet/plugins/hostpath.csi.ake.io
+          name: socket-dir
+      - name: csi-resizer
+        args:
+        - --csi-address=$(ADDRESS)
+        env:
+        - name: ADDRESS
+          value: /var/lib/kubelet/plugins/hostpath.csi.ake.io/csi.sock
+        - name: TZ
+          value: Asia/Shanghai
+        image: harbor.archeros.cn/library/ake/csi-resizer:v1.3.0
+        imagePullPolicy: Always
+        resources:
+          limits:
+            cpu: 500m
+            memory: 512Mi
+          requests:
+            cpu: 50m
+            memory: 128Mi
+        volumeMounts:
+        - mountPath: /var/lib/kubelet/plugins/hostpath.csi.ake.io
+          name: socket-dir
+      - name: csi-snapshotter
+        args:
+        - --csi-address=$(ADDRESS)
+        - --snapshot-name-prefix=snap
+        env:
+        - name: ADDRESS
+          value: /var/lib/kubelet/plugins/hostpath.csi.ake.io/csi.sock
+        - name: TZ
+          value: Asia/Shanghai
+        image: harbor.archeros.cn/library/ake/csi-snapshotter:v4.2.1
+        imagePullPolicy: Always
+        resources:
+          limits:
+            cpu: 500m
+            memory: 512Mi
+          requests:
+            cpu: 50m
+            memory: 128Mi
+        volumeMounts:
+        - mountPath: /var/lib/kubelet/plugins/hostpath.csi.ake.io
+          name: socket-dir
+      - name: csi-plugin
+        args:
+        - csi
+        - --endpoint=$(CSI_ENDPOINT)
+        - --nodeID=$(KUBE_NODE_NAME)
+        - --driver=hostpath.csi.ake.io
+        - --driver-mode=controller
+        env:
+        - name: KUBE_NODE_NAME
+          valueFrom:
+            fieldRef:
+              apiVersion: v1
+              fieldPath: spec.nodeName
+        - name: CSI_ENDPOINT
+          value: unix://var/lib/kubelet/plugins/hostpath.csi.ake.io/csi.sock
+        - name: TZ
+          value: Asia/Shanghai
+        - name: ISSUE_ORPHANED_POD
+          value: "true"
+        - name: ISSUE_BLOCK_REFERENCE
+          value: "true"
+        - name: ISSUE_MESSAGE_FILE
+          value: "true"
+        image: harbor.archeros.cn/dev/ake/csi-hostpath:v0.7.1
+        imagePullPolicy: Always
+        resources:
+          limits:
+            cpu: 500m
+            memory: 512Mi
+          requests:
+            cpu: 50m
+            memory: 128Mi
+        volumeMounts:
+        - mountPath: /var/lib/kubelet/plugins/hostpath.csi.ake.io
+          name: socket-dir
+      - name: snapshot-controller
+        image: harbor.archeros.cn/library/ake/snapshot-controller:v4.2.1
+        env:
+          - name: TZ
+            value: Asia/Shanghai
+        imagePullPolicy: Always
+        resources:
+          limits:
+            cpu: 500m
+            memory: 512Mi
+          requests:
+            cpu: 50m
+            memory: 128Mi
+      priorityClassName: system-cluster-critical
+      restartPolicy: Always
+      serviceAccount: csi-hostpath
+      serviceAccountName: csi-hostpath
+      tolerations:
+      - effect: NoSchedule
+        key: node-role.kubernetes.io/control-plane
+        operator: Exists
+      volumes:
+      - name: socket-dir
+        hostPath:
+          path: /var/lib/kubelet/plugins/hostpath.csi.ake.io
+          type: DirectoryOrCreate
+---
+# Source: csi-hostpath/templates/agent.yaml
+apiVersion: storage.k8s.io/v1
+kind: CSIDriver
+metadata:
+  name: hostpath.csi.ake.io
+spec:
+  attachRequired: false
+  podInfoOnMount: true
+  volumeLifecycleModes:
+  - Persistent
+  - Ephemeral
+---
+# Source: csi-hostpath/templates/storage-class.yaml
+apiVersion: snapshot.storage.k8s.io/v1
+kind: VolumeSnapshotClass
+metadata:
+  name: hostpath-mock
+  labels:
+    app.kubernetes.io/managed-by: "Helm"
+    app.kubernetes.io/name: "csi-hostpath"
+    app.kubernetes.io/version: "v0.0.1"
+    helm.sh/chart: "csi-hostpath-v0.0.1"
+driver: hostpath.csi.ake.io
+deletionPolicy: Delete
+parameters:
+  csi.aliyun.com/readonly: "true"
+  csi.aliyun.com/snapshot-initial-size: 4Gi
+  csi.aliyun.com/snapshot-expansion-size: 1Gi
+  csi.aliyun.com/snapshot-expansion-threshold: 50%
+---
+# Source: csi-hostpath/templates/rbac.yaml
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: csi-hostpath
+  namespace: kube-system
+  labels:
+    app.kubernetes.io/managed-by: "Helm"
+    app.kubernetes.io/name: "csi-hostpath"
+    app.kubernetes.io/version: "v0.0.1"
+    helm.sh/chart: "csi-hostpath-v0.0.1"
+---
+# Source: csi-hostpath/templates/storage-class.yaml
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: hostpath-mock
+  labels:
+    app.kubernetes.io/managed-by: "Helm"
+    app.kubernetes.io/name: "csi-hostpath"
+    app.kubernetes.io/version: "v0.0.1"
+    helm.sh/chart: "csi-hostpath-v0.0.1"
+provisioner: hostpath.csi.ake.io
+parameters:
+  volumeType: "LVM"
+  csi.storage.k8s.io/fstype: ext4
+reclaimPolicy: Delete
+volumeBindingMode: WaitForFirstConsumer
+allowVolumeExpansion: true
+---
+# Source: csi-hostpath/templates/rbac.yaml
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: csi-hostpath
+  labels:
+    app.kubernetes.io/managed-by: "Helm"
+    app.kubernetes.io/name: "csi-hostpath"
+    app.kubernetes.io/version: "v0.0.1"
+    helm.sh/chart: "csi-hostpath-v0.0.1"
+rules:
+  - apiGroups:
+      - ""
+    resources:
+      - events
+    verbs:
+      - create
+      - patch
+      - update
+  - apiGroups:
+      - ""
+    resources:
+      - nodes
+      - pods
+      - pods/binding
+      - pods/status
+      - bindings
+      - persistentvolumeclaims
+      - persistentvolumeclaims/status
+      - persistentvolumes
+      - persistentvolumes/status
+      - namespaces
+      - secrets
+    verbs:
+      - create
+      - get
+      - list
+      - watch
+      - update
+      - delete
+      - patch
+  - apiGroups:
+      - storage.k8s.io
+    resources:
+      - storageclasses
+      - csinodes
+      - volumeattachments
+    verbs:
+      - get
+      - list
+      - watch
+  - apiGroups:
+      - snapshot.storage.k8s.io
+    resources:
+      - volumesnapshotclasses
+      - volumesnapshots
+      - volumesnapshots/status
+      - volumesnapshotcontents
+      - volumesnapshotcontents/status
+    verbs:
+      - create
+      - get
+      - list
+      - watch
+      - update
+      - delete
+      - patch
+  - apiGroups:
+      - "coordination.k8s.io"
+    resources:
+      - leases
+    verbs:
+      - list
+      - watch
+      - create
+      - update
+      - patch
+      - delete
+      - get
+---
+# Source: csi-hostpath/templates/rbac.yaml
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: csi-hostpath
+  labels:
+    app.kubernetes.io/managed-by: "Helm"
+    app.kubernetes.io/name: "csi-hostpath"
+    app.kubernetes.io/version: "v0.0.1"
+    helm.sh/chart: "csi-hostpath-v0.0.1"
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: csi-hostpath
+subjects:
+- kind: ServiceAccount
+  name: csi-hostpath
+  namespace: kube-system
+---
+# Source: csi-hostpath/templates/agent.yaml
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: csi-hostpath-agent
+  namespace: kube-system
+  labels:
+    app.kubernetes.io/managed-by: "Helm"
+    app.kubernetes.io/name: "csi-hostpath"
+    app.kubernetes.io/version: "v0.0.1"
+    helm.sh/chart: "csi-hostpath-v0.0.1"
+    app.kubernetes.io/component: csi-hostpath-agent
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/component: csi-hostpath-agent
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/managed-by: "Helm"
+        app.kubernetes.io/name: "csi-hostpath"
+        app.kubernetes.io/version: "v0.0.1"
+        helm.sh/chart: "csi-hostpath-v0.0.1"
+        app.kubernetes.io/component: csi-hostpath-agent
+    spec:
+      tolerations:
+      - operator: Exists
+      serviceAccount: csi-hostpath
+      priorityClassName: system-node-critical
+      hostNetwork: true
+      hostPID: true
+      dnsPolicy: ClusterFirstWithHostNet
+      containers:
+      - name: driver-registrar
+        image: harbor.archeros.cn/library/ake/csi-node-driver-registrar:v2.3.0-amd64
+        imagePullPolicy: Always
+        args:
+        - "--v=5"
+        - "--csi-address=/csi/csi.sock"
+        - "--kubelet-registration-path=/var/lib/kubelet/plugins/hostpath.csi.ake.io/csi.sock"
+        env:
+        - name: KUBE_NODE_NAME
+          valueFrom:
+            fieldRef:
+              apiVersion: v1
+              fieldPath: spec.nodeName
+        - name: TZ
+          value: Asia/Shanghai
+        resources:
+          limits:
+            cpu: 200m
+            memory: 100Mi
+          requests:
+            cpu: 20m
+            memory: 50Mi
+        volumeMounts:
+          - name: plugin-dir
+            mountPath: /csi
+          - name: registration-dir
+            mountPath: /registration
+      - name: csi-plugin
+        securityContext:
+          privileged: true
+          capabilities:
+            add: ["SYS_ADMIN"]
+          allowPrivilegeEscalation: true
+        image: harbor.archeros.cn/dev/ake/csi-hostpath:v0.7.1
+        imagePullPolicy: Always
+        args:
+        - csi
+        - "--endpoint=$(CSI_ENDPOINT)"
+        - "--nodeID=$(KUBE_NODE_NAME)"
+        - "--driver=hostpath.csi.ake.io"
+        - "--driver-mode=agent"
+        env:
+        - name: KUBE_NODE_NAME
+          valueFrom:
+            fieldRef:
+              apiVersion: v1
+              fieldPath: spec.nodeName
+        - name: CSI_ENDPOINT
+          value: unix://var/lib/kubelet/plugins/hostpath.csi.ake.io/csi.sock
+        - name: TZ
+          value: Asia/Shanghai
+        - name: ISSUE_ORPHANED_POD
+          value: "true"
+        - name: ISSUE_BLOCK_REFERENCE
+          value: "true"
+        - name: ISSUE_MESSAGE_FILE
+          value: "true"
+        resources:
+          limits:
+            cpu: 2
+            memory: 4Gi
+          requests:
+            cpu: 50m
+            memory: 128Mi
+        volumeMounts:
+        - name: pods-mount-dir
+          mountPath: /var/lib/kubelet
+          mountPropagation: "Bidirectional"
+        - mountPath: /dev
+          mountPropagation: "HostToContainer"
+          name: host-dev
+        - mountPath: /opt/csi-hostpath/
+          mountPropagation: "Bidirectional"
+          name: localvolume
+        - mountPath: /var/log
+          name: host-log
+        - mountPath: /host_sys
+          mountPropagation: Bidirectional
+          name: sys
+      volumes:
+      - name: host-dev
+        hostPath:
+          path: /dev
+      - name: sys
+        hostPath:
+          path: "/sys"
+      - name: localvolume
+        hostPath:
+          path: /opt/csi-hostpath/
+          type: DirectoryOrCreate
+      - name: plugin-dir
+        hostPath:
+          path: /var/lib/kubelet/plugins/hostpath.csi.ake.io
+          type: DirectoryOrCreate
+      - name: registration-dir
+        hostPath:
+          path: /var/lib/kubelet/plugins_registry
+          type: DirectoryOrCreate
+      - name: pods-mount-dir
+        hostPath:
+          path: /var/lib/kubelet
+          type: Directory
+      - name: host-log
+        hostPath:
+          path: /var/log
+          type: DirectoryOrCreate
+  updateStrategy:
+    type: RollingUpdate
+---
+# Source: csi-hostpath/templates/controller.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    app.kubernetes.io/managed-by: "Helm"
+    app.kubernetes.io/name: "csi-hostpath"
+    app.kubernetes.io/version: "v0.0.1"
+    helm.sh/chart: "csi-hostpath-v0.0.1"
+    app.kubernetes.io/component: csi-hostpath-controller
+  name: csi-hostpath-controller
+  namespace: kube-system
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/component: csi-hostpath-controller
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/managed-by: "Helm"
+        app.kubernetes.io/name: "csi-hostpath"
+        app.kubernetes.io/version: "v0.0.1"
+        helm.sh/chart: "csi-hostpath-v0.0.1"
+        app.kubernetes.io/component: csi-hostpath-controller
+    spec:
+      containers:
+      - name: csi-provisioner
+        args:
+        - --csi-address=$(ADDRESS)
+        - --volume-name-prefix=local
+        - --feature-gates=Topology=True
+        - --strict-topology=True
+        - --extra-create-metadata=true
+        - --timeout=10m
+        env:
+        - name: ADDRESS
+          value: /var/lib/kubelet/plugins/hostpath.csi.ake.io/csi.sock
+        - name: TZ
+          value: Asia/Shanghai
+        image: harbor.archeros.cn/library/ake/csi-provisioner:v3.0.0-amd64
+        imagePullPolicy: Always
+        resources:
+          limits:
+            cpu: 500m
+            memory: 512Mi
+          requests:
+            cpu: 50m
+            memory: 128Mi
+        volumeMounts:
+        - mountPath: /var/lib/kubelet/plugins/hostpath.csi.ake.io
+          name: socket-dir
+      - name: csi-resizer
+        args:
+        - --csi-address=$(ADDRESS)
+        env:
+        - name: ADDRESS
+          value: /var/lib/kubelet/plugins/hostpath.csi.ake.io/csi.sock
+        - name: TZ
+          value: Asia/Shanghai
+        image: harbor.archeros.cn/library/ake/csi-resizer:v1.3.0-amd64
+        imagePullPolicy: Always
+        resources:
+          limits:
+            cpu: 500m
+            memory: 512Mi
+          requests:
+            cpu: 50m
+            memory: 128Mi
+        volumeMounts:
+        - mountPath: /var/lib/kubelet/plugins/hostpath.csi.ake.io
+          name: socket-dir
+      - name: csi-snapshotter
+        args:
+        - --csi-address=$(ADDRESS)
+        - --snapshot-name-prefix=snap
+        env:
+        - name: ADDRESS
+          value: /var/lib/kubelet/plugins/hostpath.csi.ake.io/csi.sock
+        - name: TZ
+          value: Asia/Shanghai
+        image: harbor.archeros.cn/library/ake/csi-snapshotter:v4.2.1-amd64
+        imagePullPolicy: Always
+        resources:
+          limits:
+            cpu: 500m
+            memory: 512Mi
+          requests:
+            cpu: 50m
+            memory: 128Mi
+        volumeMounts:
+        - mountPath: /var/lib/kubelet/plugins/hostpath.csi.ake.io
+          name: socket-dir
+      - name: csi-plugin
+        args:
+        - csi
+        - --endpoint=$(CSI_ENDPOINT)
+        - --nodeID=$(KUBE_NODE_NAME)
+        - --driver=hostpath.csi.ake.io
+        - --driver-mode=controller
+        env:
+        - name: KUBE_NODE_NAME
+          valueFrom:
+            fieldRef:
+              apiVersion: v1
+              fieldPath: spec.nodeName
+        - name: CSI_ENDPOINT
+          value: unix://var/lib/kubelet/plugins/hostpath.csi.ake.io/csi.sock
+        - name: TZ
+          value: Asia/Shanghai
+        - name: ISSUE_ORPHANED_POD
+          value: "true"
+        - name: ISSUE_BLOCK_REFERENCE
+          value: "true"
+        - name: ISSUE_MESSAGE_FILE
+          value: "true"
+        image: harbor.archeros.cn/dev/ake/csi-hostpath:v0.7.1
+        imagePullPolicy: Always
+        resources:
+          limits:
+            cpu: 500m
+            memory: 512Mi
+          requests:
+            cpu: 50m
+            memory: 128Mi
+        volumeMounts:
+        - mountPath: /var/lib/kubelet/plugins/hostpath.csi.ake.io
+          name: socket-dir
+      - name: snapshot-controller
+        image: harbor.archeros.cn/library/ake/snapshot-controller:v4.2.1-amd64
+        env:
+          - name: TZ
+            value: Asia/Shanghai
+        imagePullPolicy: Always
+        resources:
+          limits:
+            cpu: 500m
+            memory: 512Mi
+          requests:
+            cpu: 50m
+            memory: 128Mi
+      priorityClassName: system-cluster-critical
+      restartPolicy: Always
+      serviceAccount: csi-hostpath
+      serviceAccountName: csi-hostpath
+      tolerations:
+      - effect: NoSchedule
+        key: node-role.kubernetes.io/control-plane
+        operator: Exists
+      volumes:
+      - name: socket-dir
+        hostPath:
+          path: /var/lib/kubelet/plugins/hostpath.csi.ake.io
+          type: DirectoryOrCreate
+---
+# Source: csi-hostpath/templates/agent.yaml
+apiVersion: storage.k8s.io/v1
+kind: CSIDriver
+metadata:
+  name: hostpath.csi.ake.io
+spec:
+  attachRequired: false
+  podInfoOnMount: true
+  volumeLifecycleModes:
+  - Persistent
+  - Ephemeral
+---
+# Source: csi-hostpath/templates/storage-class.yaml
+apiVersion: snapshot.storage.k8s.io/v1
+kind: VolumeSnapshotClass
+metadata:
+  name: hostpath-mock
+  labels:
+    app.kubernetes.io/managed-by: "Helm"
+    app.kubernetes.io/name: "csi-hostpath"
+    app.kubernetes.io/version: "v0.0.1"
+    helm.sh/chart: "csi-hostpath-v0.0.1"
+driver: hostpath.csi.ake.io
+deletionPolicy: Delete
+parameters:
+  csi.aliyun.com/readonly: "true"
+  csi.aliyun.com/snapshot-initial-size: 4Gi
+  csi.aliyun.com/snapshot-expansion-size: 1Gi
+  csi.aliyun.com/snapshot-expansion-threshold: 50%

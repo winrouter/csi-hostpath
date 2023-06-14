@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"golang.org/x/sys/unix"
+	log "k8s.io/klog/v2"
 
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -21,6 +22,7 @@ const (
 
 	EnvSnapshotPrefix     = "SNAPSHOT_PREFIX"
 	DefaultSnapshotPrefix = "snap"
+	KubernetesNodeIdentityKey = "kubernetes.io/hostname"
 )
 
 // CommandRunFunc define the run function in utils for ut
@@ -67,8 +69,8 @@ func GetNodeNameFromCsiPV(pv *corev1.PersistentVolume) string {
 		return ""
 	}
 	key := pv.Spec.NodeAffinity.Required.NodeSelectorTerms[0].MatchExpressions[0].Key
-	if key != localtype.KubernetesNodeIdentityKey {
-		log.Errorf("pv %s with MatchExpressions %s, must be %s", pv.Name, key, localtype.KubernetesNodeIdentityKey)
+	if key != KubernetesNodeIdentityKey {
+		log.Errorf("pv %s with MatchExpressions %s, must be %s", pv.Name, key, KubernetesNodeIdentityKey)
 		return ""
 	}
 

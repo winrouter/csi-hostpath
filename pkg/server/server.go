@@ -19,19 +19,18 @@ package server
 import (
 	"context"
 	"fmt"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 	"net"
 	"os"
-	"time"
 
 	"github.com/google/credstore/client"
 	grpcprometheus "github.com/grpc-ecosystem/go-grpc-prometheus"
 	"github.com/grpc-ecosystem/grpc-opentracing/go/otgrpc"
-	snapshot "github.com/kubernetes-csi/external-snapshotter/client/v4/clientset/versioned"
 	"github.com/opentracing/opentracing-go"
 	"github.com/winrouter/csi-hostpath/pkg/lib"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/reflection"
-	"k8s.io/client-go/rest"
 	log "k8s.io/klog/v2"
 )
 
@@ -189,7 +188,7 @@ func (s Server) ExpandVol(ctx context.Context, in *lib.ExpandVolRequest) (*lib.E
 // CreateSnapshot create lvm snapshot
 func (s Server) CreateSnapshot(ctx context.Context, in *lib.CreateSnapshotRequest) (*lib.CreateSnapshotReply, error) {
 	log.V(6).Infof("create snapshot with: %+v", in)
-	sizeBytes, err := s.impl.CreateSnapshot(ctx, in.VgName, in.SnapshotName, in.SrcVolumeName, in.Readonly, in.RoInitSize, in.S3Secrets)
+	sizeBytes, err := s.impl.CreateSnapshot(ctx, in.VgName, in.SnapshotName, in.SrcVolumeName)
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "fail to create snapshot %s: %s", in.SnapshotName, err.Error())
 	}

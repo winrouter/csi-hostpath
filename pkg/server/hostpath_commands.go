@@ -67,7 +67,8 @@ func (lvm *HostPathCommads) ListVol(volgroup string) ([]*lib.Vol, error) {
 	dirPath := fmt.Sprintf("/opt/csi-hostpath/%s", volgroup)
 	f, err := os.Open(dirPath)
 	if err != nil {
-		return nil, fmt.Errorf("failed to read dir %s", volgroup)
+		log.Errorf("failed to read dir %s", volgroup)
+		return vols, nil
 	}
 
 	dirs, err := f.ReadDir(-1)
@@ -214,7 +215,7 @@ func (lvm *HostPathCommads) ExpandVol(ctx context.Context, vg string, vol string
 	// step1: get vol metadata
 	volInfo, err := getVolMeta(vg, vol)
 	if err != nil {
-		return "", fmt.Errorf("failed to load vol %s metadata, err: %v", src, err)
+		return "", fmt.Errorf("failed to load vol %s metadata, err: %v", vol, err)
 	}
 
 	volInfo.Size = expectSize

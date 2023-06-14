@@ -8,8 +8,8 @@ GO_PACKAGE=github.com/winrouter/csi-hostpath
 # build info
 NAME=csi-hostpath
 OUTPUT_DIR=./bin
-IMAGE_NAME_FOR_ACR=ack-agility-registry.cn-shanghai.cr.aliyuncs.com/ecp_builder/${NAME}
-IMAGE_NAME_FOR_DOCKERHUB=thebeatles1994/${NAME}
+IMAGE_NAME_FOR_ACR=harbor.archeros.cn/dev/ake/${NAME}
+IMAGE_NAME_FOR_DOCKERHUB=harbor.archeros.cn/dev/ake/${NAME}
 MAIN_FILE=./cmd/csi-plugin/main.go
 LD_FLAGS=-ldflags "-X '${GO_PACKAGE}/pkg/version.GitCommit=$(GIT_COMMIT)' -X '${GO_PACKAGE}/pkg/version.Version=$(VERSION)' -X 'main.VERSION=$(VERSION)' -X 'main.COMMITID=$(GIT_COMMIT)'"
 GIT_COMMIT=$(shell git rev-parse HEAD)
@@ -28,20 +28,18 @@ test:
 
 .PHONY: build
 build:
-	CGO_ENABLED=0 $(GO_BUILD) $(LD_FLAGS) -v -o $(OUTPUT_DIR)/$(NAME) $(MAIN_FILE)
+	CGO_ENABLED=0 $(GO_BUILD) $(LD_FLAGS) -mod=vendor -v -o $(OUTPUT_DIR)/$(NAME) $(MAIN_FILE)
 
 .PHONY: develop
 develop:
 	GOARCH=amd64 GOOS=linux CGO_ENABLED=0 $(GO_BUILD) $(LD_FLAGS) -v -o $(OUTPUT_DIR)/$(NAME) $(MAIN_FILE)
 	chmod +x $(OUTPUT_DIR)/$(NAME)
 	docker build . -t ${IMAGE_NAME_FOR_DOCKERHUB}:${VERSION} -f ./Dockerfile.dev
-	docker tag ${IMAGE_NAME_FOR_DOCKERHUB}:${VERSION} ${IMAGE_NAME_FOR_ACR}:${VERSION}
 
 # build image
 .PHONY: image
 image:
 	docker build . -t ${IMAGE_NAME_FOR_DOCKERHUB}:${VERSION} -f ./Dockerfile
-	docker tag ${IMAGE_NAME_FOR_DOCKERHUB}:${VERSION} ${IMAGE_NAME_FOR_ACR}:${VERSION}
 
 # build image for arm64
 .PHONY: image-arm64
