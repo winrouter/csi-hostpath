@@ -107,6 +107,7 @@ type VolCmd interface {
 	ExpandVol(ctx context.Context, vgName string, volumeId string, expectSize uint64) (string, error)
 	CreateSnapshot(ctx context.Context, vgName string, snapshotName string, srcVolumeName string) (int64, error)
 	RemoveSnapshot(ctx context.Context, vg string, name string) (string, error)
+	GetVolPath(ctx context.Context, vgName, volName string) string
 }
 
 
@@ -123,7 +124,7 @@ func NewServer(cmd VolCmd) Server {
 
 // ListVol list lvm volume
 func (s Server) ListVol(ctx context.Context, in *lib.ListVolRequest) (*lib.ListVolReply, error) {
-	log.V(6).Infof("List LVM for vg: %s", in.VolumeGroup)
+	log.Infof("List LVM for vg: %s", in.VolumeGroup)
 	lvs, err := s.impl.ListVol(in.VolumeGroup)
 	if err != nil {
 		log.Errorf("List LVM with error: %s", err.Error())
@@ -134,31 +135,48 @@ func (s Server) ListVol(ctx context.Context, in *lib.ListVolRequest) (*lib.ListV
 	for i, v := range lvs {
 		pblvs[i] = v.ToProto()
 	}
-	log.V(6).Infof("List LVM Successful with result: %+v", pblvs)
+	log.Infof("List LVM Successful with result: %+v", pblvs)
 	return &lib.ListVolReply{Volumes: pblvs}, nil
 }
 
 // CreateLV create lvm volume
 func (s Server) CreateVol(ctx context.Context, in *lib.CreateVolRequest) (*lib.CreateVolReply, error) {
-	log.V(6).Infof("Create LVM with: %+v", in)
-	out, err := s.impl.CreateVol(ctx, in.VolumeGroup, in.Name, in.Size)
-	if err != nil {
-		log.Errorf("Create LVM with error: %s", err.Error())
-		return nil, status.Errorf(codes.Internal, "failed to create lv: %v", err)
+	log.Infof("Create LVM with: %+v", in)
+	out := ""
+	var err error
+	if in.SnapshotName != "" {
+		out, err = s.impl.CloneVol(ctx, in.VolumeGroup, in.SnapshotName, in.Name)
+		if err != nil {
+			log.Errorf("Create vol from snapshot with error: %s", err.Error())
+			return nil, status.Errorf(codes.Internal, "failed to create vol from snapshot: %v", err)
+		}
+	} else if in.CloneName != "" {
+		out, err = s.impl.CloneVol(ctx, in.VolumeGroup, in.CloneName, in.Name)
+		if err != nil {
+			log.Errorf("Create vol from clone with error: %s", err.Error())
+			return nil, status.Errorf(codes.Internal, "failed to create vol from clone: %v", err)
+		}
+	} else {
+		out, err = s.impl.CreateVol(ctx, in.VolumeGroup, in.Name, in.Size)
+		if err != nil {
+			log.Errorf("Create vol with error: %s", err.Error())
+			return nil, status.Errorf(codes.Internal, "failed to create vol: %v", err)
+		}
 	}
-	log.V(6).Infof("Create LVM Successful with result: %+v", out)
+
+	log.Infof("Create vol Successful with result: %+v", out)
 	return &lib.CreateVolReply{CommandOutput: out}, nil
 }
 
 // RemoveLV remove lvm volume
 func (s Server) RemoveVol(ctx context.Context, in *lib.RemoveVolRequest) (*lib.RemoveVolReply, error) {
-	log.V(6).Infof("Remove LVM with: %+v", in)
+	log.Infof("Remove LVM with: %+v", in)
 	out, err := s.impl.RemoveVol(ctx, in.VolumeGroup, in.Name)
 	if err != nil {
 		log.Errorf("Remove LVM with error: %s", err.Error())
 		return nil, status.Errorf(codes.Internal, "failed to remove lv: %v", err)
 	}
-	log.V(6).Infof("Remove LVM Successful with result: %+v", out)
+	log.Infof("Remove LVM Successful with result: %+v", out)
 	return &lib.RemoveVolReply{CommandOutput: out}, nil
 }
 
@@ -169,7 +187,7 @@ func (s Server) CloneVol(ctx context.Context, in *lib.CloneVolRequest) (*lib.Clo
 		log.Errorf("Clone LVM with error: %s", err.Error())
 		return nil, status.Errorf(codes.Internal, "failed to clone lv: %v", err)
 	}
-	log.V(6).Infof("Clone LVM with result: %+v", out)
+	log.Infof("Clone LVM with result: %+v", out)
 	return &lib.CloneVolReply{CommandOutput: out}, nil
 }
 
@@ -180,30 +198,30 @@ func (s Server) ExpandVol(ctx context.Context, in *lib.ExpandVolRequest) (*lib.E
 		log.Errorf("Expand LVM with error: %s", err.Error())
 		return nil, status.Errorf(codes.Internal, "failed to expand lv: %v", err)
 	}
-	log.V(6).Infof("Expand LVM with result: %+v", out)
+	log.Infof("Expand LVM with result: %+v", out)
 	return &lib.ExpandVolReply{CommandOutput: out}, nil
 }
 
 
 // CreateSnapshot create lvm snapshot
 func (s Server) CreateSnapshot(ctx context.Context, in *lib.CreateSnapshotRequest) (*lib.CreateSnapshotReply, error) {
-	log.V(6).Infof("create snapshot with: %+v", in)
+	log.Infof("create snapshot with: %+v", in)
 	sizeBytes, err := s.impl.CreateSnapshot(ctx, in.VgName, in.SnapshotName, in.SrcVolumeName)
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "fail to create snapshot %s: %s", in.SnapshotName, err.Error())
 	}
-	log.V(6).Infof("create snapshot successfully with result: %+v", sizeBytes)
+	log.Infof("create snapshot successfully with result: %+v", sizeBytes)
 	return &lib.CreateSnapshotReply{SizeBytes: sizeBytes}, nil
 }
 
 // RemoveSnapshot remove lvm snapshot
 func (s Server) RemoveSnapshot(ctx context.Context, in *lib.RemoveSnapshotRequest) (*lib.RemoveSnapshotReply, error) {
-	log.V(6).Infof("Remove LVM Snapshot with: %+v", in)
+	log.Infof("Remove LVM Snapshot with: %+v", in)
 	out, err := s.impl.RemoveSnapshot(ctx, in.VgName, in.SnapshotName)
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "RemoveSnapshot: remove snapshot with error: %s", err.Error())
 	}
-	log.V(6).Infof("Remove LVM Snapshot Successful with result: %+v", out)
+	log.Infof("Remove LVM Snapshot Successful with result: %+v", out)
 	return &lib.RemoveSnapshotReply{CommandOutput: out}, nil
 }
 

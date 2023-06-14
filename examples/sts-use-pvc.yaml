@@ -1,0 +1,44 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: demo-hostpath-csi
+  labels:
+    app: demo-hostpath-csi
+spec:
+  ports:
+    - port: 8900
+      name: web
+  clusterIP: None
+  selector:
+    app: demo-hostpath-csi
+---
+apiVersion: apps/v1
+kind:  StatefulSet
+metadata:
+  name: demo-hostpath-csi
+spec:
+  selector:
+    matchLabels:
+      app: demo-hostpath-csi
+  serviceName: "demo-hostpath-csi"
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        app: demo-hostpath-csi
+    spec:
+      containers:
+        - image: openebs/tests-fio
+          name: nginx
+          command: ["/bin/bash"]
+          args: ["-c", "while true ;do sleep 120; done"]
+          ports:
+            - containerPort: 8900
+              protocol: TCP
+          volumeMounts:
+            - mountPath: /var/www
+              name: hostpath-volume
+      volumes:
+        - name: hostpath-volume
+          persistentVolumeClaim:
+            claimName: restore-snap-fio-vol-fio-2-0

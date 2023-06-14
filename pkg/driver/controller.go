@@ -234,6 +234,7 @@ func (cs *controller) CreateVolume(
 		options.Name = volName
 		options.VolumeGroup = vgName
 		options.SnapshotName = snapshotHandle
+		options.Size = uint64(capSize)
 		if lvName, err := conn.GetVolume(ctx, vgName, volName); err != nil {
 			return nil, status.Errorf(codes.Internal, "CreateVolume: fail to get lv %s from node %s: %s", volName, nodeName, err.Error())
 		} else {
@@ -256,6 +257,7 @@ func (cs *controller) CreateVolume(
 		options.Name = volName
 		options.VolumeGroup = vgName
 		options.CloneName = sourceVolID
+		options.Size = uint64(capSize)
 		if lvName, err := conn.GetVolume(ctx, vgName, volName); err != nil {
 			return nil, status.Errorf(codes.Internal, "CreateVolume: fail to get lv %s from node %s: %s", volName, nodeName, err.Error())
 		} else {
@@ -277,6 +279,7 @@ func (cs *controller) CreateVolume(
 		options := &client.VolOptions{}
 		options.Name = volName
 		options.VolumeGroup = vgName
+		options.Size = uint64(capSize)
 		if lvName, err := conn.GetVolume(ctx, vgName, volName); err != nil {
 			return nil, status.Errorf(codes.Internal, "CreateVolume: fail to get lv %s from node %s: %s", volName, nodeName, err.Error())
 		} else {

@@ -1,0 +1,15 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: restore-snap-fio-vol-fio-2-0
+spec:
+  storageClassName: hostpath-mock
+  dataSource:
+    name: snap-fio-vol-fio-2-0
+    kind: VolumeSnapshot
+    apiGroup: snapshot.storage.k8s.io
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 2Gi

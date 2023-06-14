@@ -18,11 +18,12 @@ import (
 )
 
 const (
-	VGName       = "vgName"
+	VGName       = "csi.io/volume-group-name"
 
 	EnvSnapshotPrefix     = "SNAPSHOT_PREFIX"
 	DefaultSnapshotPrefix = "snap"
 	KubernetesNodeIdentityKey = "kubernetes.io/hostname"
+
 )
 
 // CommandRunFunc define the run function in utils for ut

@@ -52,6 +52,7 @@ type nodeServer struct {
 	driver *CSIDriver
 	osTool utils.OSTool
 	k8smounter           *mountutils.SafeFormatAndMount
+	cmd server.VolCmd
 }
 
 // NewNode returns a new instance
@@ -71,6 +72,7 @@ func NewNodeServer(d *CSIDriver) csi.NodeServer {
 			Interface: mountutils.New(""),
 			Exec:      utilexec.New(),
 		},
+		cmd: &server.HostPathCommads{},
 	}
 }
 
@@ -213,10 +215,13 @@ func (ns *nodeServer) NodePublishVolume(
 
 func (ns *nodeServer) mountMountPointVolume(ctx context.Context, req *csi.NodePublishVolumeRequest) error {
 	sourcePath := ""
+	vgName := ""
 	targetPath := req.TargetPath
-	if value, ok := req.VolumeContext[string(MPName)]; ok {
-		sourcePath = value
+	if value, ok := req.VolumeContext[VolumeGroupName]; ok {
+		vgName = value
 	}
+
+	sourcePath = ns.cmd.GetVolPath(context.TODO(), vgName, req.VolumeId)
 	if sourcePath == "" {
 		return fmt.Errorf("mountMountPointVolume: sourcePath of volume %s is empty", req.VolumeId)
 	}

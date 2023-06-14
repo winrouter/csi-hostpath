@@ -37,7 +37,7 @@ type HostPathCommads struct {
 
 func getVolMeta(volgroup, vol string) (*lib.Vol, error) {
 	// whether meta.json of vol exist
-	metaFile := fmt.Sprintf("/opt/csi-host/%s/%s/meta.json", volgroup, vol)
+	metaFile := fmt.Sprintf("/opt/csi-hostpath/%s/%s/meta.json", volgroup, vol)
 	f, err := os.Open(metaFile)
 	if err != nil {
 		return nil, err
@@ -307,6 +307,14 @@ func (lvm *HostPathCommads) CreateSnapshot(ctx context.Context, vg string, snaps
 	}
 
 	return 0, nil
+}
+
+func (lvm *HostPathCommads) GetVolPath(ctx context.Context, vg, vol string) string {
+	if vg == "" || vol == "" {
+		return ""
+	}
+	volPath := fmt.Sprintf("/opt/csi-hostpath/%s/%s/mountpoint", vg, vol)
+	return volPath
 }
 
 // RemoveSnapshot removes a volume snapshot
