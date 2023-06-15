@@ -35,7 +35,7 @@ import (
 
 // Connection lvm connection interface
 type Connection interface {
-	GetVolume(ctx context.Context, volGroup string, volumeID string) (string, error)
+	GetVolume(ctx context.Context, volGroup string, volumeID string) (*remotelib.LogicalVolume, error)
 	CreateVolume(ctx context.Context, opt *VolOptions) (string, error)
 	DeleteVolume(ctx context.Context, volGroup string, volumeID string) error
 	CreateSnapshot(ctx context.Context, vgName string, snapshotName string, srcVolumeName string) (int64, error)
@@ -154,7 +154,7 @@ func (c *workerConnection) CreateSnapshot(ctx context.Context, vgName string, sn
 	return rsp.GetSizeBytes(), nil
 }
 
-func (c *workerConnection) GetVolume(ctx context.Context, volGroup string, volumeID string) (string, error) {
+func (c *workerConnection) GetVolume(ctx context.Context, volGroup string, volumeID string) (*remotelib.LogicalVolume, error) {
 	client := remotelib.NewVolClient(c.conn)
 	req := remotelib.ListVolRequest{
 		VolumeGroup: volGroup,
@@ -163,18 +163,18 @@ func (c *workerConnection) GetVolume(ctx context.Context, volGroup string, volum
 	rsp, err := client.ListVol(ctx, &req)
 	if err != nil {
 		log.Errorf("Get Lvm with error: %s", err.Error())
-		return "", err
+		return nil, err
 	}
 	log.V(6).Infof("Get Lvm with result: %+v", rsp.Volumes)
 
 	for _, volume := range rsp.GetVolumes() {
 		if volume.Name == volumeID {
-			return volumeID, nil
+			return volume, nil
 		}
 	}
 
 	log.Warningf("Volume %s is not exist", utils.GetNameKey(volGroup, volumeID))
-	return "", nil
+	return nil, nil
 }
 
 func (c *workerConnection) DeleteVolume(ctx context.Context, volGroup, volumeID string) error {

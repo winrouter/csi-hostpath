@@ -12,6 +12,8 @@ rules:
       - create
       - patch
       - update
+      - list
+      - watch
   - apiGroups:
       - ""
     resources:
@@ -52,6 +54,22 @@ rules:
       - volumesnapshots/status
       - volumesnapshotcontents
       - volumesnapshotcontents/status
+    verbs:
+      - create
+      - get
+      - list
+      - watch
+      - update
+      - delete
+      - patch
+  - apiGroups:
+      - groupsnapshot.storage.k8s.io
+    resources:
+      - VolumeGroupSnapshotClass
+      - VolumeGroupSnapshot
+      - VolumeGroupSnapshot/status
+      - VolumeGroupSnapshotContent
+      - VolumeGroupSnapshotContent/status
     verbs:
       - create
       - get

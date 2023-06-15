@@ -110,6 +110,7 @@ func (lvm *HostPathCommads) CreateVol(ctx context.Context, vg string, name strin
 		Name: name,
 		Size: size,
 		VGName: vg,
+		Status: "ok",
 	}
 
 	metaFile := fmt.Sprintf("%s/meta.json", volPath)

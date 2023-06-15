@@ -25,6 +25,7 @@ type VolClient interface {
 	ExpandVol(ctx context.Context, in *ExpandVolRequest, opts ...grpc.CallOption) (*ExpandVolReply, error)
 	CreateSnapshot(ctx context.Context, in *CreateSnapshotRequest, opts ...grpc.CallOption) (*CreateSnapshotReply, error)
 	RemoveSnapshot(ctx context.Context, in *RemoveSnapshotRequest, opts ...grpc.CallOption) (*RemoveSnapshotReply, error)
+	ListSnapshot(ctx context.Context, in *ListSnapshotRequest, opts ...grpc.CallOption) (*ListSnapshotReply, error)
 }
 
 type volClient struct {
@@ -98,6 +99,15 @@ func (c *volClient) RemoveSnapshot(ctx context.Context, in *RemoveSnapshotReques
 	return out, nil
 }
 
+func (c *volClient) ListSnapshot(ctx context.Context, in *ListSnapshotRequest, opts ...grpc.CallOption) (*ListSnapshotReply, error) {
+	out := new(ListSnapshotReply)
+	err := c.cc.Invoke(ctx, "/proto.Vol/ListSnapshot", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // VolServer is the server API for Vol service.
 // All implementations must embed UnimplementedVolServer
 // for forward compatibility
@@ -109,6 +119,7 @@ type VolServer interface {
 	ExpandVol(context.Context, *ExpandVolRequest) (*ExpandVolReply, error)
 	CreateSnapshot(context.Context, *CreateSnapshotRequest) (*CreateSnapshotReply, error)
 	RemoveSnapshot(context.Context, *RemoveSnapshotRequest) (*RemoveSnapshotReply, error)
+	ListSnapshot(context.Context, *ListSnapshotRequest) (*ListSnapshotReply, error)
 	mustEmbedUnimplementedVolServer()
 }
 
@@ -136,6 +147,9 @@ func (UnimplementedVolServer) CreateSnapshot(context.Context, *CreateSnapshotReq
 }
 func (UnimplementedVolServer) RemoveSnapshot(context.Context, *RemoveSnapshotRequest) (*RemoveSnapshotReply, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method RemoveSnapshot not implemented")
+}
+func (UnimplementedVolServer) ListSnapshot(context.Context, *ListSnapshotRequest) (*ListSnapshotReply, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method ListSnapshot not implemented")
 }
 func (UnimplementedVolServer) mustEmbedUnimplementedVolServer() {}
 
@@ -276,6 +290,24 @@ func _Vol_RemoveSnapshot_Handler(srv interface{}, ctx context.Context, dec func(
 	return interceptor(ctx, in, info, handler)
 }
 
+func _Vol_ListSnapshot_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ListSnapshotRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(VolServer).ListSnapshot(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/proto.Vol/ListSnapshot",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(VolServer).ListSnapshot(ctx, req.(*ListSnapshotRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // Vol_ServiceDesc is the grpc.ServiceDesc for Vol service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -310,6 +342,10 @@ var Vol_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "RemoveSnapshot",
 			Handler:    _Vol_RemoveSnapshot_Handler,
+		},
+		{
+			MethodName: "ListSnapshot",
+			Handler:    _Vol_ListSnapshot_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

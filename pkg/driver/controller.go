@@ -19,7 +19,9 @@ package driver
 import (
 	"fmt"
 	snapshot "github.com/kubernetes-csi/external-snapshotter/client/v4/clientset/versioned"
+	snapshotv1api "github.com/kubernetes-csi/external-snapshotter/client/v4/apis/volumesnapshot/v1"
 	"github.com/winrouter/csi-hostpath/pkg/config"
+	remotelib "github.com/winrouter/csi-hostpath/pkg/lib"
 	"github.com/winrouter/csi-hostpath/pkg/signals"
 	"github.com/winrouter/csi-hostpath/pkg/utils"
 	"k8s.io/client-go/tools/cache"
@@ -235,10 +237,11 @@ func (cs *controller) CreateVolume(
 		options.VolumeGroup = vgName
 		options.SnapshotName = snapshotHandle
 		options.Size = uint64(capSize)
-		if lvName, err := conn.GetVolume(ctx, vgName, volName); err != nil {
+		var volObj *remotelib.LogicalVolume
+		if volObj, err = conn.GetVolume(ctx, vgName, volName); err != nil {
 			return nil, status.Errorf(codes.Internal, "CreateVolume: fail to get lv %s from node %s: %s", volName, nodeName, err.Error())
 		} else {
-			if lvName == "" {
+			if volObj == nil {
 				klog.Info("CreateVolume: volume %s not found, creating volume on node %s", volName, nodeName)
 				outstr, err := conn.CreateVolume(ctx, options)
 				if err != nil {
@@ -258,10 +261,12 @@ func (cs *controller) CreateVolume(
 		options.VolumeGroup = vgName
 		options.CloneName = sourceVolID
 		options.Size = uint64(capSize)
-		if lvName, err := conn.GetVolume(ctx, vgName, volName); err != nil {
+
+		var volObj *remotelib.LogicalVolume
+		if volObj, err = conn.GetVolume(ctx, vgName, volName); err != nil {
 			return nil, status.Errorf(codes.Internal, "CreateVolume: fail to get lv %s from node %s: %s", volName, nodeName, err.Error())
 		} else {
-			if lvName == "" {
+			if volObj == nil {
 				klog.Info("CreateVolume: volume %s not found, creating volume on node %s", volName, nodeName)
 				outstr, err := conn.CreateVolume(ctx, options)
 				if err != nil {
@@ -280,10 +285,12 @@ func (cs *controller) CreateVolume(
 		options.Name = volName
 		options.VolumeGroup = vgName
 		options.Size = uint64(capSize)
-		if lvName, err := conn.GetVolume(ctx, vgName, volName); err != nil {
+
+		var volObj *remotelib.LogicalVolume
+		if volObj, err = conn.GetVolume(ctx, vgName, volName); err != nil {
 			return nil, status.Errorf(codes.Internal, "CreateVolume: fail to get lv %s from node %s: %s", volName, nodeName, err.Error())
 		} else {
-			if lvName == "" {
+			if volObj == nil {
 				klog.Info("CreateVolume: volume %s not found, creating volume on node %s", volName, nodeName)
 				outstr, err := conn.CreateVolume(ctx, options)
 				if err != nil {
@@ -324,6 +331,7 @@ func (cs *controller) DeleteVolume(
 	ctx context.Context,
 	req *csi.DeleteVolumeRequest) (*csi.DeleteVolumeResponse, error) {
 
+	// TODO check exist snapshot before delete volume
 	var err error
 	if err = cs.validateDeleteVolumeReq(req); err != nil {
 		return nil, err
@@ -352,7 +360,8 @@ func (cs *controller) DeleteVolume(
 		return &csi.DeleteVolumeResponse{}, nil
 	}
 
-	if lvName, err := conn.GetVolume(ctx, vgName, volumeID); err != nil {
+	var volObj *remotelib.LogicalVolume
+	if volObj, err = conn.GetVolume(ctx, vgName, volumeID); err != nil {
 		if strings.Contains(err.Error(), "Failed to find logical volume") {
 			klog.Warningf("DeleteVolume: lvm volume not found, skip deleting %s", volumeID)
 		} else if strings.Contains(err.Error(), "Volume group \""+vgName+"\" not found") {
@@ -361,7 +370,7 @@ func (cs *controller) DeleteVolume(
 			return nil, status.Errorf(codes.Internal, "DeleteVolume: fail to get lv %s: %s", volumeID, err.Error())
 		}
 	} else {
-		if lvName != "" {
+		if volObj != nil {
 			klog.Infof("DeleteVolume: found lv %s at node %s, now deleting", utils.GetNameKey(vgName, volumeID), nodeName)
 			if err := conn.DeleteVolume(ctx, vgName, volumeID); err != nil {
 				return nil, status.Errorf(codes.Internal, "DeleteVolume: fail to delete lv %s: %s", volumeID, err.Error())
@@ -546,11 +555,11 @@ func (cs *controller) CreateSnapshot(
 	var sizeBytes int64
 
 	// create lvm snapshot
-	var lvmName string
-	if lvmName, err = conn.GetVolume(ctx, vgName, snapshotName); err != nil {
+	var volObj *remotelib.LogicalVolume
+	if volObj, err = conn.GetVolume(ctx, vgName, snapshotName); err != nil {
 		return nil, status.Errorf(codes.Internal, "CreateSnapshot: get lvm snapshot %s failed: %s", snapshotName, err.Error())
 	}
-	if lvmName == "" {
+	if volObj == nil {
 		log.Infof("CreateSnapshot: ro snapshot %s not found, now creating on node %s", utils.GetNameKey(vgName, snapshotName), snapshotName, nodeName)
 		sizeBytes, err = conn.CreateSnapshot(ctx, vgName, snapshotName, srcVolumeID)
 		if err != nil {
@@ -615,11 +624,11 @@ func (cs *controller) DeleteSnapshot(
 	defer conn.Close()
 
 	// delete lvm snapshot
-	var lvmName string
-	if lvmName, err = conn.GetVolume(ctx, vgName, snapshotID); err != nil {
+	var volObj *remotelib.LogicalVolume
+	if volObj, err = conn.GetVolume(ctx, vgName, snapshotID); err != nil {
 		return nil, status.Errorf(codes.Internal, "DeleteSnapshot: get lvm snapshot %s failed: %s", snapshotID, err.Error())
 	}
-	if lvmName != "" {
+	if volObj != nil {
 		log.Infof("DeleteSnapshot: lvm ro snapshot %s found, now deleting...", snapshotID)
 		err := conn.DeleteSnapshot(ctx, vgName, snapshotID)
 		if err != nil {
@@ -643,8 +652,57 @@ func (cs *controller) ListSnapshots(
 	ctx context.Context,
 	req *csi.ListSnapshotsRequest,
 ) (*csi.ListSnapshotsResponse, error) {
+	log.Infof("list snapshots")
+	entries := make([]*csi.ListSnapshotsResponse_Entry, 0)
+	snapshotContents, _ := cs.getAllSnapshotContentOfLocalCSI()
+	for _, content := range snapshotContents {
+		lvName := *content.Spec.Source.VolumeHandle
+		snapName := *content.Status.SnapshotHandle
+		pvObj, err := cs.pvLister.Get(lvName)
+		if err != nil {
+			log.Errorf("get pv %s err: %+v", lvName, err)
+			continue
+		}
+		vgName := pvObj.Spec.CSI.VolumeAttributes["csi.io/volume-group-name"]
+		nodeName := utils.GetNodeNameFromCsiPV(pvObj)
+		if nodeName == "" {
+			log.Errorf("not found nodeName")
+			continue
+		}
+		conn, err := cs.getNodeConn(nodeName)
+		if err != nil {
+			log.Errorf("not get node conn %s", nodeName)
+			continue
+		}
 
-	return nil, status.Error(codes.Unimplemented, "")
+
+		// delete lvm snapshot
+		var vol *remotelib.LogicalVolume
+		if vol, err = conn.GetVolume(ctx, vgName, snapName); err != nil {
+			log.Errorf("not getVolume  %s-%s err %v", vgName, snapName, err)
+			continue
+		}
+		conn.Close()
+
+		readyToUse := true
+		if vol.Status != "ok" {
+			readyToUse = false
+		}
+
+		entry := &csi.ListSnapshotsResponse_Entry {
+			Snapshot: &csi.Snapshot{
+				SizeBytes:            int64(vol.Size),
+				SnapshotId:           snapName,
+				SourceVolumeId:       lvName,
+				CreationTime:         nil,
+				ReadyToUse:           readyToUse,
+			},
+		}
+		entries = append(entries, entry)
+
+	}
+	log.Infof("list snapshot entries %v", len(entries))
+	return &csi.ListSnapshotsResponse{Entries: entries}, nil
 }
 
 // ControllerUnpublishVolume removes a previously
@@ -667,7 +725,7 @@ func (cs *controller) ControllerPublishVolume(
 	ctx context.Context,
 	req *csi.ControllerPublishVolumeRequest,
 ) (*csi.ControllerPublishVolumeResponse, error) {
-	log.V(4).Infof("ControllerPublishVolume: called with args %+v", *req)
+	log.Infof("ControllerPublishVolume: called with args %+v", *req)
 	return &csi.ControllerPublishVolumeResponse{}, nil
 }
 
@@ -694,8 +752,7 @@ func (cs *controller) ListVolumes(
 	req *csi.ListVolumesRequest,
 ) (*csi.ListVolumesResponse, error) {
 	var ventries []*csi.ListVolumesResponse_Entry
-	abnormal := false
-	errMsg := ""
+
 
 	PVsInfo, err := getAllPVsOfLocalCSI()
 	if err != nil {
@@ -703,6 +760,36 @@ func (cs *controller) ListVolumes(
 	}
 
 	for _, pv := range PVsInfo {
+		lvName := pv.Name
+		vgName := utils.GetVGNameFromCsiPV(&pv)
+		if vgName == "" {
+			log.Infof("not found valid vgname")
+			continue
+		}
+
+		nodeName := utils.GetNodeNameFromCsiPV(&pv)
+		if nodeName == "" {
+			return nil, status.Errorf(codes.Internal, "DeleteSnapshot: fail to get node name of pv %s", pv.Name)
+		}
+		conn, err := cs.getNodeConn(nodeName)
+		if err != nil {
+			return nil, status.Errorf(codes.Internal, "DeleteSnapshot: get grpc client at node %s error: %s", nodeName, err.Error())
+		}
+
+
+		// delete lvm snapshot
+		var volObj *remotelib.LogicalVolume
+		if volObj, err = conn.GetVolume(ctx, vgName, lvName); err != nil {
+			return nil, status.Errorf(codes.Internal, "DeleteSnapshot: get lvm snapshot %s failed: %s", lvName, err.Error())
+		}
+		conn.Close()
+
+		abnormal := false
+		errMsg := ""
+		if volObj.Status != "ok" {
+			abnormal = true
+			errMsg = "volume lost"
+		}
 
 		ventry := csi.ListVolumesResponse_Entry{
 			Volume: &csi.Volume{
@@ -721,6 +808,26 @@ func (cs *controller) ListVolumes(
 	}, nil
 }
 
+func (cs *controller) getAllSnapshotContentOfLocalCSI() (map[string]snapshotv1api.VolumeSnapshotContent, error) {
+	snapContent := make(map[string]snapshotv1api.VolumeSnapshotContent, 0)
+	snapContentsList, err := cs.snapClient.SnapshotV1().VolumeSnapshotContents().List(context.TODO(), metav1.ListOptions{})
+	if err != nil {
+		log.Infof("list volume snapshot contents failed:%+v", err)
+		return snapContent, nil
+	}
+
+	for _, content := range snapContentsList.Items {
+		if content.Spec.Driver != config.LocalProvider {
+			continue
+		}
+		if content.Spec.VolumeSnapshotRef.Name == "" {
+			continue
+		}
+		snapContent[content.Name] = content
+	}
+	log.Infof("list volume snapshot contents %v", len(snapContent))
+	return snapContent, nil
+}
 
 func getAllPVsOfLocalCSI() (PVsInfo map[string]corev1.PersistentVolume, err error) {
 	allPVs := make(map[string]corev1.PersistentVolume)
@@ -829,6 +936,7 @@ func newControllerCapabilities() []*csi.ControllerServiceCapability {
 		csi.ControllerServiceCapability_RPC_VOLUME_CONDITION,
 		csi.ControllerServiceCapability_RPC_LIST_VOLUMES,
 		csi.ControllerServiceCapability_RPC_GET_VOLUME,
+		csi.ControllerServiceCapability_RPC_LIST_SNAPSHOTS,
 	} {
 		capabilities = append(capabilities, fromType(cap))
 	}

@@ -16,6 +16,22 @@ spec:
         app.kubernetes.io/component: {{ .Values.name }}-controller
     spec:
       containers:
+      - name: csi-health-monitor
+        image: {{ .Values.global.RegistryLibraryURL }}/{{ .Values.images.health_monitor.image }}:{{ .Values.images.health_monitor.tag }}
+        imagePullPolicy: Always
+        args:
+        - "--v=5"
+        - "--csi-address=$(ADDRESS)"
+        - "--enable-node-watcher=true"
+        - "--list-volumes-interval=5m"
+        - "--node-list-add-interval=1m"
+        - "--leader-election"
+        env:
+        - name: ADDRESS
+          value: /var/lib/kubelet/plugins/{{ .Values.driver }}/csi.sock
+        volumeMounts:
+        - name: socket-dir
+          mountPath: /var/lib/kubelet/plugins/{{ .Values.driver }}
       - name: csi-provisioner
         args:
         - --csi-address=$(ADDRESS)

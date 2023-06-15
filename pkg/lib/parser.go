@@ -18,9 +18,7 @@ limitations under the License.
 
 package lib
 
-import (
-	"bytes"
-)
+
 
 // VolumeType is volume type
 type VolumeType byte
@@ -49,13 +47,7 @@ const (
 	VolumeTypeRaidOrThinPoolMetadata    VolumeType = 'e'
 )
 
-func (t VolumeType) toProto() LogicalVolume_Attributes_Type {
-	idx := bytes.IndexByte(volumeTypeKeys, byte(t))
-	if idx == -1 {
-		return LogicalVolume_Attributes_MALFORMED_TYPE
-	}
-	return LogicalVolume_Attributes_Type(idx + 1)
-}
+
 
 // VolumePermissions is volume permissions
 type VolumePermissions rune
@@ -69,13 +61,6 @@ const (
 	VolumePermissionsReadOnlyActivation VolumePermissions = 'R'
 )
 
-func (t VolumePermissions) toProto() LogicalVolume_Attributes_Permissions {
-	idx := bytes.IndexByte(volumePermissonsKeys, byte(t))
-	if idx == -1 {
-		return LogicalVolume_Attributes_MALFORMED_PERMISSIONS
-	}
-	return LogicalVolume_Attributes_Permissions(idx + 1)
-}
 
 // VolumeAllocation is volume allocation policy
 type VolumeAllocation rune
@@ -96,13 +81,7 @@ const (
 	VolumeAllocationNormalLocked     VolumeAllocation = 'N'
 )
 
-func (t VolumeAllocation) toProto() LogicalVolume_Attributes_Allocation {
-	idx := bytes.IndexByte(volumeAllocationKeys, byte(t))
-	if idx == -1 {
-		return LogicalVolume_Attributes_MALFORMED_ALLOCATION
-	}
-	return LogicalVolume_Attributes_Allocation(idx + 1)
-}
+
 
 // VolumeFixedMinor is volume fixed minor
 type VolumeFixedMinor rune
@@ -134,13 +113,7 @@ const (
 	VolumeStateMappedDevicePresentWithInactiveTable VolumeState = 'i'
 )
 
-func (t VolumeState) toProto() LogicalVolume_Attributes_State {
-	idx := bytes.IndexByte(volumeStateKeys, byte(t))
-	if idx == -1 {
-		return LogicalVolume_Attributes_MALFORMED_STATE
-	}
-	return LogicalVolume_Attributes_State(idx + 1)
-}
+
 
 // VolumeOpen is volume open
 type VolumeOpen rune
@@ -170,13 +143,7 @@ const (
 	VolumeTargetTypeVirtual  VolumeTargetType = 'v'
 )
 
-func (t VolumeTargetType) toProto() LogicalVolume_Attributes_TargetType {
-	idx := bytes.IndexByte(volumeTargetTypeKeys, byte(t))
-	if idx == -1 {
-		return LogicalVolume_Attributes_MALFORMED_TARGET
-	}
-	return LogicalVolume_Attributes_TargetType(idx + 1)
-}
+
 
 // VolumeZeroing is volume zeroing
 type VolumeZeroing rune
@@ -203,13 +170,7 @@ const (
 	VolumeHealthWritemostly     VolumeHealth = 'w'
 )
 
-func (t VolumeHealth) toProto() LogicalVolume_Attributes_Health {
-	idx := bytes.IndexByte(volumeTargetTypeKeys, byte(t))
-	if idx == -1 {
-		return LogicalVolume_Attributes_MALFORMED_HEALTH
-	}
-	return LogicalVolume_Attributes_Health(idx + 1)
-}
+
 
 // VolumeActivationSkipped is volume activation
 type VolumeActivationSkipped rune
@@ -238,29 +199,17 @@ type LVAttributes struct {
 	ActivationSkipped VolumeActivationSkipped
 }
 
-// ToProto returns lvm.LogicalVolume.Attributes representation of struct
-func (a LVAttributes) ToProto() *LogicalVolume_Attributes {
-	return &LogicalVolume_Attributes{
-		Type:              a.Type.toProto(),
-		Permissions:       a.Permissions.toProto(),
-		Allocation:        a.Allocation.toProto(),
-		FixedMinor:        a.FixedMinor.toProto(),
-		State:             a.State.toProto(),
-		Open:              a.Open.toProto(),
-		TargetType:        a.TargetType.toProto(),
-		Zeroing:           a.Zeroing.toProto(),
-		Health:            a.Health.toProto(),
-		ActivationSkipped: a.ActivationSkipped.toProto(),
-	}
-}
+
 
 // LV is a logical volume
 type Vol struct {
 	Name               string
 	Size               uint64
-	UUID               string
 	Tags               []string
 	VGName             string
+	Status             string
+	SnapshotName       string
+	CloneName          string
 }
 
 // VG is volume group
@@ -288,8 +237,11 @@ func (lv Vol) ToProto() *LogicalVolume {
 	return &LogicalVolume{
 		Name:                 lv.Name,
 		Size:                 lv.Size,
-		Uuid:                 lv.UUID,
+		VolumeGroup:  lv.VGName,
+		Status: lv.Status,
 		Tags:                 lv.Tags,
+		SnapshotName: lv.SnapshotName,
+		CloneName: lv.CloneName,
 	}
 }
 
