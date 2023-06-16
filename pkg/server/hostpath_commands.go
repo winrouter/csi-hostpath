@@ -307,7 +307,7 @@ func (lvm *HostPathCommads) CreateSnapshot(ctx context.Context, vg string, snaps
 		return 0, fmt.Errorf("failed to write metadata to %s, err:%v", metaFile, err)
 	}
 
-	return 0, nil
+	return int64(snapVolInfo.Size), nil
 }
 
 func (lvm *HostPathCommads) GetVolPath(ctx context.Context, vg, vol string) string {
