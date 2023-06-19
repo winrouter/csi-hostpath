@@ -1,0 +1,28 @@
+---
+apiVersion: groupsnapshot.storage.k8s.io/v1alpha1
+kind: VolumeGroupSnapshotClass
+metadata:
+  name: hostpath-mock-vgsc
+  labels:
+    app: demo
+driver: hostpath.csi.ake.io
+deletionPolicy: Delete
+parameters:
+  csi.ake.io/readonly: "true"
+---
+apiVersion: groupsnapshot.storage.k8s.io/v1alpha1
+kind: VolumeGroupSnapshot
+metadata:
+  name: hostpath-mock-vgs
+  namespace: default
+  labels:
+    app: demo
+spec:
+  source:
+    selector:
+      matchExpressions:
+      - key: app
+        operator: Exists
+        values:
+        - "fio-multiple"
+  volumeGroupSnapshotClassName: hostpath-mock-vgsc

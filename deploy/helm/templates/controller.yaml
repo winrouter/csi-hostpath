@@ -81,6 +81,7 @@ spec:
         args:
         - --csi-address=$(ADDRESS)
         - --snapshot-name-prefix=snap
+        - --enable-volume-group-snapshots=true
         env:
         - name: ADDRESS
           value: /var/lib/kubelet/plugins/{{ .Values.driver }}/csi.sock
@@ -135,6 +136,8 @@ spec:
           name: socket-dir
       - name: snapshot-controller
         image: {{ .Values.global.RegistryLibraryURL }}/{{ .Values.images.snapshot_controller.image }}:{{ .Values.images.snapshot_controller.tag }}
+        args:
+          - --enable-volume-group-snapshots=true
         env:
           - name: TZ
             value: Asia/Shanghai

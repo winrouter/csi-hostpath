@@ -65,11 +65,11 @@ rules:
   - apiGroups:
       - groupsnapshot.storage.k8s.io
     resources:
-      - VolumeGroupSnapshotClass
-      - VolumeGroupSnapshot
-      - VolumeGroupSnapshot/status
-      - VolumeGroupSnapshotContent
-      - VolumeGroupSnapshotContent/status
+      - volumegroupsnapshotclasses
+      - volumegroupsnapshots
+      - volumegroupsnapshots/status
+      - volumegroupsnapshotcontents
+      - volumegroupsnapshotcontents/status
     verbs:
       - create
       - get

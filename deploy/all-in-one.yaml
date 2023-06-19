@@ -24,6 +24,7 @@ metadata:
 provisioner: hostpath.csi.ake.io
 parameters:
   hostpath: "pool1"
+  csi.storage.k8s.io/fstype: ext4
 reclaimPolicy: Delete
 volumeBindingMode: WaitForFirstConsumer
 allowVolumeExpansion: true
@@ -100,11 +101,11 @@ rules:
   - apiGroups:
       - groupsnapshot.storage.k8s.io
     resources:
-      - VolumeGroupSnapshotClass
-      - VolumeGroupSnapshot
-      - VolumeGroupSnapshot/status
-      - VolumeGroupSnapshotContent
-      - VolumeGroupSnapshotContent/status
+      - volumegroupsnapshotclasses
+      - volumegroupsnapshots
+      - volumegroupsnapshots/status
+      - volumegroupsnapshotcontents
+      - volumegroupsnapshotcontents/status
     verbs:
       - create
       - get
@@ -379,12 +380,13 @@ spec:
         args:
         - --csi-address=$(ADDRESS)
         - --snapshot-name-prefix=snap
+        - --enable-volume-group-snapshots=true
         env:
         - name: ADDRESS
           value: /var/lib/kubelet/plugins/hostpath.csi.ake.io/csi.sock
         - name: TZ
           value: Asia/Shanghai
-        image: harbor.archeros.cn/library/ake/csi-snapshotter:v6.2.1-amd64
+        image: harbor.archeros.cn/library/ake/csi-snapshotter:latest-amd64
         imagePullPolicy: Always
         resources:
           limits:
@@ -432,7 +434,9 @@ spec:
         - mountPath: /var/lib/kubelet/plugins/hostpath.csi.ake.io
           name: socket-dir
       - name: snapshot-controller
-        image: harbor.archeros.cn/library/ake/snapshot-controller:v6.2.1-amd64
+        image: harbor.archeros.cn/library/ake/snapshot-controller:latest-amd64
+        args:
+          - --enable-volume-group-snapshots=true
         env:
           - name: TZ
             value: Asia/Shanghai

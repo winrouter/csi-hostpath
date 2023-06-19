@@ -17,10 +17,10 @@ images:
     tag: v1.3.0-amd64
   snapshotter:
     image: csi-snapshotter
-    tag: v6.2.1-amd64
+    tag: latest-amd64
   snapshot_controller:
     image: snapshot-controller
-    tag: v6.2.1-amd64
+    tag: latest-amd64
   health_monitor:
     image: csi-external-health-monitor-controller
     tag: v0.9.0-amd64

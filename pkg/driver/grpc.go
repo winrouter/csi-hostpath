@@ -100,12 +100,13 @@ type NonBlockingGRPCServer interface {
 }
 
 // NewNonBlockingGRPCServer returns a new instance of NonBlockingGRPCServer
-func NewNonBlockingGRPCServer(ep string, ids csi.IdentityServer, cs csi.ControllerServer, ns csi.NodeServer) NonBlockingGRPCServer {
+func NewNonBlockingGRPCServer(ep string, ids csi.IdentityServer, cs csi.ControllerServer, ns csi.NodeServer, gs csi.GroupControllerServer) NonBlockingGRPCServer {
 	return &nonBlockingGRPCServer{
 		endpoint:    ep,
 		idntyServer: ids,
 		ctrlServer:  cs,
-		agentServer: ns}
+		agentServer: ns,
+		groupServer: gs,}
 }
 
 // NonBlocking server
@@ -118,6 +119,7 @@ type nonBlockingGRPCServer struct {
 	idntyServer csi.IdentityServer
 	ctrlServer  csi.ControllerServer
 	agentServer csi.NodeServer
+	groupServer csi.GroupControllerServer
 }
 
 // Start grpc server for serving CSI endpoints
@@ -125,7 +127,7 @@ func (s *nonBlockingGRPCServer) Start() {
 
 	s.wg.Add(1)
 
-	go s.serve(s.endpoint, s.idntyServer, s.ctrlServer, s.agentServer)
+	go s.serve(s.endpoint, s.idntyServer, s.ctrlServer, s.agentServer, s.groupServer)
 }
 
 // Wait for the service to stop
@@ -146,7 +148,7 @@ func (s *nonBlockingGRPCServer) ForceStop() {
 // serve starts serving requests at the provided endpoint based on the type of
 // plugin. In this function all the csi related interfaces are provided by
 // container-storage-interface
-func (s *nonBlockingGRPCServer) serve(endpoint string, ids csi.IdentityServer, cs csi.ControllerServer, ns csi.NodeServer) {
+func (s *nonBlockingGRPCServer) serve(endpoint string, ids csi.IdentityServer, cs csi.ControllerServer, ns csi.NodeServer, gs csi.GroupControllerServer) {
 
 	proto, addr, err := parseEndpoint(endpoint)
 	if err != nil {
@@ -185,6 +187,9 @@ func (s *nonBlockingGRPCServer) serve(endpoint string, ids csi.IdentityServer, c
 	}
 	if ns != nil {
 		csi.RegisterNodeServer(server, ns)
+	}
+	if gs != nil {
+		csi.RegisterGroupControllerServer(server, gs)
 	}
 
 	klog.Infof("Listening for connections on address: %#v", listener.Addr())

@@ -1,3 +1,14 @@
+apiVersion: snapshot.storage.k8s.io/v1
+kind: VolumeSnapshotClass
+metadata:
+  name: ostpath-mock
+  labels:
+    app: demo
+driver: hostpath.csi.ake.io
+deletionPolicy: Delete
+parameters:
+  csi.ake.io/readonly: "true"
+---
 apiVersion: snapshot.storage.k8s.io/v1beta1
 kind: VolumeSnapshot
 metadata:

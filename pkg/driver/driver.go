@@ -32,6 +32,7 @@ type CSIDriver struct {
 	ids    csi.IdentityServer
 	ns     csi.NodeServer
 	cs     csi.ControllerServer
+	gs     csi.GroupControllerServer
 
 	cap []*csi.VolumeCapability_AccessMode
 }
@@ -64,7 +65,9 @@ func New(config *config.Config) *CSIDriver {
 
 	switch config.PluginType {
 	case "controller":
-		driver.cs = NewController(driver)
+		controllerServer := NewController(driver)
+		driver.cs = controllerServer
+		driver.gs = controllerServer
 
 	case "agent":
 		// Start monitor goroutine to monitor the
@@ -87,7 +90,7 @@ func New(config *config.Config) *CSIDriver {
 // over the given endpoint
 func (d *CSIDriver) Run() error {
 	// Initialize and start listening on grpc server
-	s := NewNonBlockingGRPCServer(d.config.Endpoint, d.ids, d.cs, d.ns)
+	s := NewNonBlockingGRPCServer(d.config.Endpoint, d.ids, d.cs, d.ns, d.gs)
 
 	s.Start()
 	s.Wait()

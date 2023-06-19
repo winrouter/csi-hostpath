@@ -75,6 +75,11 @@ func (b *CreateSnapshotResponseBuilder) WithReadyToUse(readyToUse bool) *CreateS
 	return b
 }
 
+func (b *CreateSnapshotResponseBuilder) WithGroupSnapshotId(groupSnapshotId string) *CreateSnapshotResponseBuilder {
+	b.response.Snapshot.GroupSnapshotId = groupSnapshotId
+	return b
+}
+
 // Build returns the constructed instance
 // of csi CreateSnapshotResponse
 func (b *CreateSnapshotResponseBuilder) Build() *csi.CreateSnapshotResponse {
